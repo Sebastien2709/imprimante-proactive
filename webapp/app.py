@@ -55,6 +55,8 @@ COLUMN_TYPE_LIV = "type_livraison"
 COLUMN_LAST_UPDATE = "last_update"
 COLUMN_LAST_PCT = "last_pct"
 
+KPAX_STALE_DAYS = 20
+
 # -------------------------------------------------------------------
 # UTILITAIRES
 # -------------------------------------------------------------------
@@ -173,9 +175,6 @@ def load_kpax_last_states():
 
         long_parts.append(tmp)
 
-
-        long_parts.append(tmp)
-
     if not long_parts:
         print("[KPAX] Aucune colonne couleur trouvée.")
         return pd.DataFrame(
@@ -262,6 +261,19 @@ def load_data():
         df[COLUMN_LAST_UPDATE] = pd.NaT
         df[COLUMN_LAST_PCT] = pd.NA
 
+    # ------------------------------------------------------------
+    # DÉTECTION KPAX MUET / RUPTURE POTENTIELLE
+    # ------------------------------------------------------------
+    today = pd.Timestamp.today().normalize()
+
+    df[COLUMN_LAST_UPDATE] = pd.to_datetime(df[COLUMN_LAST_UPDATE], errors="coerce")
+    df["days_since_last"] = (today - df[COLUMN_LAST_UPDATE]).dt.days
+
+    df["rupture_kpax"] = (
+        df["days_since_last"].isna()
+        | (df["days_since_last"] > KPAX_STALE_DAYS)
+    )
+
     return df
 
 # -------------------------------------------------------------------
@@ -331,7 +343,14 @@ def index():
     sort_cols.append(COLUMN_CLIENT)
     sort_cols.append(COLUMN_SERIAL_DISPLAY)
 
-    filtered = filtered.sort_values(sort_cols)
+    # Les KPAX muets (rupture ?) doivent passer en dernier
+    if "rupture_kpax" in filtered.columns:
+        filtered = filtered.sort_values(
+            by=["rupture_kpax"] + sort_cols,
+            ascending=[True] + [True] * len(sort_cols),
+        )
+    else:
+        filtered = filtered.sort_values(sort_cols)
 
     # --------- Regroupement par imprimante ----------
     grouped_printers = []

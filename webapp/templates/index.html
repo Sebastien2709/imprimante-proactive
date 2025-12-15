@@ -8,9 +8,7 @@
       rel="stylesheet"
     >
     <style>
-      body {
-        background-color: #f5f5f7;
-      }
+      body { background-color: #f5f5f7; }
       .app-header {
         background: linear-gradient(135deg, #0d6efd, #6610f2);
         color: white;
@@ -20,19 +18,11 @@
         border-radius: 1rem;
         border: 1px solid #e0e0e0;
       }
-      .badge-prio-1 {
-        background-color: #dc3545;
-      }
-      .badge-prio-2 {
-        background-color: #fd7e14;
-      }
-      .badge-prio-3 {
-        background-color: #ffc107;
-        color: #212529;
-      }
-      .badge-prio-4 {
-        background-color: #198754;
-      }
+      .badge-prio-1 { background-color: #dc3545; }
+      .badge-prio-2 { background-color: #fd7e14; }
+      .badge-prio-3 { background-color: #ffc107; color: #212529; }
+      .badge-prio-4 { background-color: #198754; }
+
       .chip {
         display: inline-flex;
         align-items: center;
@@ -43,28 +33,16 @@
         color: #f8f9fa;
         margin-right: 0.5rem;
       }
-      .chip span {
-        font-weight: 600;
-        margin-right: 0.25rem;
-      }
-      .badge-type {
-        font-size: 0.75rem;
-      }
-      .badge-type-contrat {
-        background-color: #0d6efd;
-      }
-      .badge-type-commande {
-        background-color: #6c757d;
-      }
-      .badge-type-stock {
-        background-color: #0dcaf0;
-        color: #212529;
-      }
-      .badge-type-inconnu {
-        background-color: #adb5bd;
-      }
+      .chip span { font-weight: 600; margin-right: 0.25rem; }
+
+      .badge-type { font-size: 0.75rem; }
+      .badge-type-contrat { background-color: #0d6efd; }
+      .badge-type-commande { background-color: #6c757d; }
+      .badge-type-stock { background-color: #0dcaf0; color: #212529; }
+      .badge-type-inconnu { background-color: #adb5bd; }
     </style>
   </head>
+
   <body>
     <div class="container py-4">
 
@@ -78,15 +56,9 @@
             </p>
           </div>
           <div class="text-end">
-            <div class="chip">
-              <span>Total</span> {{ total_rows }}
-            </div>
-            <div class="chip">
-              <span>À traiter</span> {{ pending_rows }}
-            </div>
-            <div class="chip">
-              <span>Envoyés</span> {{ sent_rows }}
-            </div>
+            <div class="chip"><span>Total</span> {{ total_rows }}</div>
+            <div class="chip"><span>À traiter</span> {{ pending_rows }}</div>
+            <div class="chip"><span>Envoyés</span> {{ sent_rows }}</div>
           </div>
         </div>
       </div>
@@ -135,9 +107,19 @@
         <div class="col-md-2 d-flex align-items-end">
           <div class="form-check me-3">
             <input class="form-check-input" type="checkbox" name="pending" value="1" id="pendingCheck"
-                {% if show_only_pending %}checked{% endif %}>
+              {% if show_only_pending %}checked{% endif %}>
             <label class="form-check-label" for="pendingCheck">
-                Uniquement à envoyer
+              Uniquement à envoyer
+            </label>
+          </div>
+        </div>
+
+        <!-- ✅ Filtre client-side "Rupture ?" -->
+        <div class="col-12">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="showRupture" checked>
+            <label class="form-check-label" for="showRupture">
+              Afficher “Rupture ?” (KPAX muet / dernière remontée trop ancienne)
             </label>
           </div>
         </div>
@@ -175,20 +157,15 @@
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
               <div class="mb-2">
                 <strong>Imprimante :</strong> {{ printer.serial_display }}
+
                 {% if printer.client %}
-                  <span class="ms-3">
-                    <strong>Client :</strong> {{ printer.client }}
-                  </span>
+                  <span class="ms-3"><strong>Client :</strong> {{ printer.client }}</span>
                 {% endif %}
                 {% if printer.contract %}
-                  <span class="ms-3 text-muted">
-                    Contrat : {{ printer.contract }}
-                  </span>
+                  <span class="ms-3 text-muted">Contrat : {{ printer.contract }}</span>
                 {% endif %}
                 {% if printer.city %}
-                  <span class="ms-3 text-muted">
-                    Ville : {{ printer.city }}
-                  </span>
+                  <span class="ms-3 text-muted">Ville : {{ printer.city }}</span>
                 {% endif %}
                 {% if printer.min_stockout_date %}
                   <span class="ms-3 text-muted">
@@ -201,6 +178,7 @@
                   </span>
                 {% endif %}
               </div>
+
               <div class="mb-2">
                 {% if printer.min_priority %}
                   {% set p = printer.min_priority %}
@@ -214,6 +192,7 @@
                 {% endif %}
               </div>
             </div>
+
             <div class="card-body p-0">
               <div class="table-responsive">
                 <table class="table table-sm align-middle mb-0">
@@ -225,6 +204,7 @@
                       <th style="width: 13%">Date rupture estimée</th>
                       <th style="width: 8%">Priorité</th>
                       <th style="width: 10%">Dernière remontée</th>
+                      <th style="width: 8%">Rupture ?</th>
                       <th style="width: 6%">% actuel</th>
                       <th style="width: 13%">Client</th>
                       <th style="width: 8%">Ville</th>
@@ -234,15 +214,22 @@
                       <th style="width: 12%">Action</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {% for r in printer.rows %}
                       {% set rid = r[col_id] %}
                       {% set prio = r.get(col_priority) %}
-                      <tr class="{% if rid in processed_ids %}table-success{% endif %}">
+                      {% set is_rupture = r.get('rupture_kpax') %}
+
+                      <tr
+                        data-rupture="{{ 1 if is_rupture else 0 }}"
+                        class="{% if rid in processed_ids %}table-success{% endif %}"
+                      >
                         <td>{{ rid }}</td>
                         <td>{{ r.get(col_toner, '') }}</td>
                         <td>{{ r.get(col_days, '') }}</td>
                         <td>{{ r.get(col_stockout, '') }}</td>
+
                         <td>
                           {% if prio %}
                             <span class="badge
@@ -254,14 +241,26 @@
                             </span>
                           {% endif %}
                         </td>
+
                         <td>{{ r.get(col_last_update, '') }}</td>
+
+                        <td>
+                          {% if is_rupture %}
+                            <span class="badge bg-warning text-dark">Rupture ?</span>
+                          {% else %}
+                            <span class="badge bg-success">OK</span>
+                          {% endif %}
+                        </td>
+
                         <td>
                           {% if r.get(col_last_pct) is not none %}
                             {{ r.get(col_last_pct) | round(0) }}%
                           {% endif %}
                         </td>
+
                         <td>{{ r.get(col_client, '') }}</td>
                         <td>{{ r.get(col_city, '') }}</td>
+
                         <td>
                           {% set tl = r.get(col_type_liv, '') %}
                           {% if tl == "contrat_maintenance" %}
@@ -274,7 +273,9 @@
                             <span class="badge badge-type badge-type-inconnu">{{ tl }}</span>
                           {% endif %}
                         </td>
+
                         <td>{{ r.get(col_comment, '') }}</td>
+
                         <td>
                           {% if rid in processed_ids %}
                             ✅ Envoyé
@@ -282,6 +283,7 @@
                             ⏳ À traiter
                           {% endif %}
                         </td>
+
                         <td>
                           {% if rid not in processed_ids %}
                             <form method="post" action="{{ url_for('mark_processed', row_id=rid) }}">
@@ -300,6 +302,7 @@
                       </tr>
                     {% endfor %}
                   </tbody>
+
                 </table>
               </div>
             </div>
@@ -318,43 +321,37 @@
     <script id="priority-data" type="application/json">
       {{ priority_counts | tojson }}
     </script>
-
     <script id="color-data" type="application/json">
       {{ color_counts | tojson }}
     </script>
 
     <script>
-      const priorityCounts = JSON.parse(
-        document.getElementById("priority-data").textContent
-      );
+      const priorityCounts = JSON.parse(document.getElementById("priority-data").textContent);
+      const colorCounts = JSON.parse(document.getElementById("color-data").textContent);
 
-      const colorCounts = JSON.parse(
-        document.getElementById("color-data").textContent
-      );
+      // ✅ Filtre rupture KPAX (client-side)
+      const ruptureCheckbox = document.getElementById("showRupture");
+      function applyRuptureFilter() {
+        const show = ruptureCheckbox ? ruptureCheckbox.checked : true;
+        document.querySelectorAll("tr[data-rupture='1']").forEach(tr => {
+          tr.style.display = show ? "" : "none";
+        });
+      }
+      if (ruptureCheckbox) {
+        ruptureCheckbox.addEventListener("change", applyRuptureFilter);
+        applyRuptureFilter(); // apply on load
+      }
 
       // Graphique par priorité
       const prCtx = document.getElementById('priorityChart');
       if (prCtx && Object.keys(priorityCounts).length > 0) {
         new Chart(prCtx, {
           type: 'bar',
-          data: {
-            labels: Object.keys(priorityCounts),
-            datasets: [{
-              label: 'Nb de toners',
-              data: Object.values(priorityCounts)
-            }]
-          },
+          data: { labels: Object.keys(priorityCounts), datasets: [{ label: 'Nb de toners', data: Object.values(priorityCounts) }] },
           options: {
             responsive: true,
-            plugins: {
-              legend: { display: false }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                ticks: { precision: 0 }
-              }
-            }
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
           }
         });
       }
@@ -364,24 +361,11 @@
       if (colCtx && Object.keys(colorCounts).length > 0) {
         new Chart(colCtx, {
           type: 'bar',
-          data: {
-            labels: Object.keys(colorCounts),
-            datasets: [{
-              label: 'Nb de toners',
-              data: Object.values(colorCounts)
-            }]
-          },
+          data: { labels: Object.keys(colorCounts), datasets: [{ label: 'Nb de toners', data: Object.values(colorCounts) }] },
           options: {
             responsive: true,
-            plugins: {
-              legend: { display: false }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                ticks: { precision: 0 }
-              }
-            }
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
           }
         });
       }

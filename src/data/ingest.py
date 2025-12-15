@@ -8,17 +8,31 @@ INTERIM.mkdir(parents=True, exist_ok=True)
 
 
 def find_latest(pattern: str) -> Path:
-    """
-    Cherche le dernier fichier qui match le pattern (glob)
-    dans data/raw. Exemple: 'AI_Export_ItemLedgEntries_ADEXGROUP*.txt'
-    """
-    candidates = sorted(RAW.glob(pattern))
+    candidates = list(RAW.glob(pattern))
     if not candidates:
         raise FileNotFoundError(f"Aucun fichier trouvé pour le pattern: {pattern}")
-    # on prend le plus récent par date de modif
-    latest = max(candidates, key=lambda p: p.stat().st_mtime)
+
+    def extract_date(p: Path):
+        # cherche un bloc de 8 chiffres type 15122025
+        m = re.search(r"(\d{8})", p.name)
+        if not m:
+            return None
+        s = m.group(1)  # DDMMYYYY
+        dd, mm, yyyy = int(s[:2]), int(s[2:4]), int(s[4:])
+        return (yyyy, mm, dd)
+
+    dated = [(p, extract_date(p)) for p in candidates]
+    dated_ok = [(p, d) for p, d in dated if d is not None]
+
+    if dated_ok:
+        latest = max(dated_ok, key=lambda t: t[1])[0]
+    else:
+        # fallback si aucun nom n'a de date : on reprend mtime
+        latest = max(candidates, key=lambda p: p.stat().st_mtime)
+
     print(f"[ingest] latest for {pattern}: {latest.name}")
     return latest
+
 
 
 def load_kpax_consumables_adex() -> pd.DataFrame:
