@@ -1,3 +1,6 @@
 ﻿.venv/
 data/raw/
 data/interim/
+
+.env
+.env.*
