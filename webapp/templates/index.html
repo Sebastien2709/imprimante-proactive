@@ -40,6 +40,9 @@
       .badge-type-commande { background-color: #6c757d; }
       .badge-type-stock { background-color: #0dcaf0; color: #212529; }
       .badge-type-inconnu { background-color: #adb5bd; }
+
+      .btn-toner { margin-left: .35rem; margin-top: .15rem; }
+      .slope-pill { font-size: .85rem; }
     </style>
   </head>
 
@@ -104,29 +107,28 @@
           </select>
         </div>
 
-        <div class="col-md-2 d-flex align-items-end">
-          <div class="form-check me-3">
-            <input class="form-check-input" type="checkbox" name="pending" value="1" id="pendingCheck"
-              {% if show_only_pending %}checked{% endif %}>
-            <label class="form-check-label" for="pendingCheck">
-              Uniquement à envoyer
-            </label>
-          </div>
-        </div>
+        <!-- Filtre serveur rupture -->
+<div class="col-12">
+  <label class="form-label">Rupture (KPAX muet / dernière remontée trop ancienne)</label>
+  <div class="btn-group" role="group" aria-label="Filtre rupture">
+    <input type="radio" class="btn-check" name="rupture_mode" id="rupt_all" value="all"
+      {% if rupture_mode == "all" %}checked{% endif %}>
+    <label class="btn btn-outline-primary" for="rupt_all">Tout</label>
 
-        <!-- ✅ Filtre client-side "Rupture ?" -->
-        <div class="col-12">
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="showRupture" checked>
-            <label class="form-check-label" for="showRupture">
-              Afficher “Rupture ?” (KPAX muet / dernière remontée trop ancienne)
-            </label>
-          </div>
-        </div>
+    <input type="radio" class="btn-check" name="rupture_mode" id="rupt_ok" value="ok"
+      {% if rupture_mode == "ok" %}checked{% endif %}>
+    <label class="btn btn-outline-primary" for="rupt_ok">OK</label>
+
+    <input type="radio" class="btn-check" name="rupture_mode" id="rupt_rupture" value="rupture"
+      {% if rupture_mode == "rupture" %}checked{% endif %}>
+    <label class="btn btn-outline-primary" for="rupt_rupture">Rupture ?</label>
+  </div>
+</div>
+
 
         <div class="col-12 d-flex justify-content-end">
           <button type="submit" class="btn btn-primary me-2">Filtrer</button>
-          <a href="/" class="btn btn-outline-light border">Réinitialiser</a>
+          <a href="/" class="btn btn-primary me-2">Réinitialiser</a>
         </div>
       </form>
 
@@ -158,6 +160,17 @@
               <div class="mb-2">
                 <strong>Imprimante :</strong> {{ printer.serial_display }}
 
+                <a
+                  class="btn btn-sm btn-primary ms-2"
+                  href="/printer/{{ printer.serial_display }}"
+                >
+                  Détails
+                </a>
+
+
+                <div class="mt-2" data-slopes-for="{{ printer.serial_display }}"></div>
+
+
                 {% if printer.client %}
                   <span class="ms-3"><strong>Client :</strong> {{ printer.client }}</span>
                 {% endif %}
@@ -177,10 +190,29 @@
                     Jours restants min : <strong>{{ printer.min_days_left|round(0) }}</strong>
                   </span>
                 {% endif %}
+
+                <!-- Boutons rapides par toner (couleur) -->
+                {% if printer.colors_present and printer.colors_present|length > 0 %}
+                  <div class="mt-2">
+                    <span class="text-muted me-2">Pente rapide :</span>
+                    {% for c in printer.colors_present %}
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-primary btn-toner slope-btn"
+                        data-serial="{{ printer.serial_display }}"
+                        data-color="{{ c }}"
+                        data-bs-toggle="modal"
+                        data-bs-target="#slopeModal"
+                      >
+                        {{ c }}
+                      </button>
+                    {% endfor %}
+                  </div>
+                {% endif %}
               </div>
 
               <div class="mb-2">
-                {% if printer.min_priority %}
+                {% if printer.min_priority is not none %}
                   {% set p = printer.min_priority %}
                   <span class="badge
                     {% if p == 1 %}badge-prio-1
@@ -200,6 +232,7 @@
                     <tr>
                       <th style="width: 4%">ID</th>
                       <th style="width: 10%">Toner</th>
+                      <th style="width: 7%">Couleur</th>
                       <th style="width: 9%">Jours restants</th>
                       <th style="width: 13%">Date rupture estimée</th>
                       <th style="width: 8%">Priorité</th>
@@ -211,6 +244,7 @@
                       <th style="width: 12%">Type livraison</th>
                       <th style="width: 15%">Commentaire</th>
                       <th style="width: 7%">Statut</th>
+                      <th style="width: 10%">Pente</th>
                       <th style="width: 12%">Action</th>
                     </tr>
                   </thead>
@@ -221,17 +255,21 @@
                       {% set prio = r.get(col_priority) %}
                       {% set is_rupture = r.get('rupture_kpax') %}
 
+                      {% set color_val = (r.get('couleur_norm') or r.get('couleur') or '') %}
+                      {% set color_val = color_val|string|lower|trim %}
+
                       <tr
                         data-rupture="{{ 1 if is_rupture else 0 }}"
                         class="{% if rid in processed_ids %}table-success{% endif %}"
                       >
                         <td>{{ rid }}</td>
                         <td>{{ r.get(col_toner, '') }}</td>
+                        <td>{{ r.get('couleur', '') }}</td>
                         <td>{{ r.get(col_days, '') }}</td>
                         <td>{{ r.get(col_stockout, '') }}</td>
 
                         <td>
-                          {% if prio %}
+                          {% if prio is not none %}
                             <span class="badge
                               {% if prio == 1 %}badge-prio-1
                               {% elif prio == 2 %}badge-prio-2
@@ -284,6 +322,24 @@
                           {% endif %}
                         </td>
 
+                        <!-- ✅ Bouton pente par toner -->
+                        <td>
+                          {% if color_val %}
+                            <button
+                              type="button"
+                              class="btn btn-sm btn-outline-dark slope-btn"
+                              data-serial="{{ printer.serial_display }}"
+                              data-color="{{ color_val }}"
+                              data-bs-toggle="modal"
+                              data-bs-target="#slopeModal"
+                            >
+                              Voir
+                            </button>
+                          {% else %}
+                            <span class="text-muted">—</span>
+                          {% endif %}
+                        </td>
+
                         <td>
                           {% if rid not in processed_ids %}
                             <form method="post" action="{{ url_for('mark_processed', row_id=rid) }}">
@@ -315,6 +371,46 @@
       {% endif %}
     </div>
 
+    <!-- ✅ MODAL PENTE -->
+    <div class="modal fade" id="slopeModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title mb-1">Pente de consommation</h5>
+              <div class="text-muted small" id="slopeSubtitle"></div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="d-flex gap-2 flex-wrap align-items-center mb-3">
+              <label class="form-label mb-0 me-2">Toner :</label>
+              <select class="form-select form-select-sm" id="slopeColorSelect" style="max-width: 220px;">
+                <option value="black">black</option>
+                <option value="cyan">cyan</option>
+                <option value="magenta">magenta</option>
+                <option value="yellow">yellow</option>
+              </select>
+
+              <span class="badge bg-light text-dark slope-pill" id="slopeValuePill">
+                pente: —
+              </span>
+              <span class="text-muted small" id="slopeSource"></span>
+            </div>
+
+            <div class="alert alert-warning d-none" id="slopeWarn"></div>
+
+            <canvas id="slopeChart" height="140"></canvas>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fermer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
@@ -331,16 +427,26 @@
 
       // ✅ Filtre rupture KPAX (client-side)
       const ruptureCheckbox = document.getElementById("showRupture");
-      function applyRuptureFilter() {
-        const show = ruptureCheckbox ? ruptureCheckbox.checked : true;
-        document.querySelectorAll("tr[data-rupture='1']").forEach(tr => {
-          tr.style.display = show ? "" : "none";
-        });
-      }
-      if (ruptureCheckbox) {
-        ruptureCheckbox.addEventListener("change", applyRuptureFilter);
-        applyRuptureFilter(); // apply on load
-      }
+
+  function applyRuptureFilter() {
+    const show = ruptureCheckbox ? ruptureCheckbox.checked : true;
+
+    // 1) masque/affiche les lignes rupture
+    document.querySelectorAll("tr[data-rupture='1']").forEach(tr => {
+      tr.style.display = show ? "" : "none";
+    });
+
+    // 2) masque la carte entière si aucune ligne n'est visible
+    document.querySelectorAll(".printer-card").forEach(card => {
+      const visibleRows = card.querySelectorAll("tbody tr:not([style*='display: none'])");
+      card.style.display = (visibleRows.length > 0) ? "" : "none";
+    });
+  }
+
+  if (ruptureCheckbox) {
+    ruptureCheckbox.addEventListener("change", applyRuptureFilter);
+    applyRuptureFilter();
+  }
 
       // Graphique par priorité
       const prCtx = document.getElementById('priorityChart');
@@ -369,6 +475,180 @@
           }
         });
       }
+
+      // ------------------------------------------------------------
+      // ✅ MODAL + CHART PENTE
+      // ------------------------------------------------------------
+      const slopeModal = document.getElementById('slopeModal');
+      const slopeSubtitle = document.getElementById('slopeSubtitle');
+      const slopeColorSelect = document.getElementById('slopeColorSelect');
+      const slopeValuePill = document.getElementById('slopeValuePill');
+      const slopeSource = document.getElementById('slopeSource');
+      const slopeWarn = document.getElementById('slopeWarn');
+
+      let slopeChart = null;
+      let currentSerial = null;
+
+      function destroySlopeChart() {
+        if (slopeChart) {
+          slopeChart.destroy();
+          slopeChart = null;
+        }
+      }
+
+      function setWarn(msg) {
+        if (!msg) {
+          slopeWarn.classList.add("d-none");
+          slopeWarn.textContent = "";
+          return;
+        }
+        slopeWarn.textContent = msg;
+        slopeWarn.classList.remove("d-none");
+      }
+
+      async function loadAndRender(serial, color) {
+        currentSerial = serial;
+        const c = (color || "black").toLowerCase();
+
+        slopeSubtitle.textContent = `Imprimante: ${serial}`;
+        slopeColorSelect.value = c;
+
+        slopeValuePill.textContent = "pente: …";
+        slopeSource.textContent = "";
+        setWarn(null);
+
+        destroySlopeChart();
+
+        const url = `/api/consumption?serial=${encodeURIComponent(serial)}&color=${encodeURIComponent(c)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.error) {
+          setWarn("Erreur: " + data.error);
+          slopeValuePill.textContent = "pente: —";
+          return;
+        }
+
+        const slope = data.slope_pct_per_day;
+        if (slope === null || slope === undefined) {
+          slopeValuePill.textContent = "pente: —";
+        } else {
+          // affichage plus lisible
+          const s = Number(slope);
+          slopeValuePill.textContent = `pente: ${s.toFixed(3)} %/jour`;
+        }
+
+        if (data.slope_source) {
+          slopeSource.textContent = `(source: ${data.slope_source})`;
+        }
+
+        const points = data.points || [];
+        if (!points.length) {
+          setWarn("Aucun historique KPAX trouvé pour ce toner. (On affiche seulement la pente si disponible via forecasts)");
+          return;
+        }
+
+        const labels = points.map(p => p.date);
+        const values = points.map(p => p.pct);
+
+        const ctx = document.getElementById("slopeChart");
+        slopeChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: "% toner",
+              data: values,
+              tension: 0.25,
+              pointRadius: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: true } },
+            scales: {
+              y: { beginAtZero: true, suggestedMax: 100 }
+            }
+          }
+        });
+      }
+
+      // Click bouton "Voir pente"
+      document.querySelectorAll(".slope-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const serial = btn.dataset.serial;
+          const color = btn.dataset.color || "black";
+          loadAndRender(serial, color);
+        });
+      });
+
+      // Changement de toner dans la modal
+      slopeColorSelect.addEventListener("change", () => {
+        if (!currentSerial) return;
+        loadAndRender(currentSerial, slopeColorSelect.value);
+      });
+
+      // Clean quand on ferme la modal
+      slopeModal.addEventListener("hidden.bs.modal", () => {
+        destroySlopeChart();
+        currentSerial = null;
+        setWarn(null);
+        slopeValuePill.textContent = "pente: —";
+      });
     </script>
+
+    <script>
+  function formatSlope(v) {
+    if (v === null || v === undefined || Number.isNaN(v)) return "—";
+    const n = Number(v);
+    return `${n.toFixed(3)} %/jour`;
+  }
+
+  function slopeBadge(color, value) {
+    const txt = formatSlope(value);
+    return `
+      <span class="badge bg-light text-dark me-2 mb-1">
+        <strong>${color}</strong> : ${txt}
+      </span>
+    `;
+  }
+
+  async function loadPrinterSlopes(serial) {
+    const container = document.querySelector(`[data-slopes-for="${CSS.escape(serial)}"]`);
+    if (!container) return;
+
+    container.innerHTML = `<span class="text-muted small">Chargement…</span>`;
+
+    const url = `/api/slopes?serial=${encodeURIComponent(serial)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.error) {
+      container.innerHTML = `<span class="text-danger small">Erreur: ${data.error}</span>`;
+      return;
+    }
+
+    const s = data.slopes || {};
+    container.innerHTML = `
+      <div class="d-flex flex-wrap align-items-center">
+        ${slopeBadge("black", s.black)}
+        ${slopeBadge("cyan", s.cyan)}
+        ${slopeBadge("magenta", s.magenta)}
+        ${slopeBadge("yellow", s.yellow)}
+      </div>
+      <div class="text-muted small mt-1">
+        (pente = régression linéaire, %/jour ; “—” si pas assez de points)
+      </div>
+    `;
+  }
+
+  document.querySelectorAll(".printer-slopes-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const serial = btn.dataset.serial;
+      loadPrinterSlopes(serial);
+    });
+  });
+</script>
+
   </body>
 </html>

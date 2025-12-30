@@ -24,7 +24,7 @@ consumables:
   lookback_days: 30
   alt_lookback_days: 45      # élargit la fenêtre si peu de points
   min_points_for_slope: 8
-  low_threshold_pct: 10      # on vise 10% (pas 0) pour la date de "stockout"
+  low_threshold_pct: 0      # on vise 10% (pas 0) pour la date de "stockout"
   min_abs_slope_pct_per_day: 0.10  # ignorer les pentes trop faibles (bruit capteur)
 
 # Décision métier & horizons

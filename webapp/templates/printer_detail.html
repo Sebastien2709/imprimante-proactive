@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Détails imprimante {{ serial_display }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  >
+</head>
+
+<body class="bg-light">
+  <div class="container py-4">
+
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+      <div>
+        <h1 class="h4 mb-1">Imprimante : {{ serial_display }}</h1>
+        <div class="text-muted">
+          {% if client %}<span><strong>Client:</strong> {{ client }}</span>{% endif %}
+          {% if city %}<span class="ms-3"><strong>Ville:</strong> {{ city }}</span>{% endif %}
+          {% if contract %}<span class="ms-3"><strong>Contrat:</strong> {{ contract }}</span>{% endif %}
+        </div>
+
+        <div class="text-muted mt-1">
+          {% if min_stockout_date %}<span><strong>Prochaine rupture estimée:</strong> {{ min_stockout_date }}</span>{% endif %}
+          {% if min_days_left is not none %}<span class="ms-3"><strong>Jours restants min:</strong> {{ min_days_left }}</span>{% endif %}
+          {% if min_priority is not none %}<span class="ms-3"><strong>Priorité min:</strong> {{ min_priority }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="text-end">
+        <a href="/" class="btn btn-outline-secondary">← Retour</a>
+      </div>
+    </div>
+
+    <!-- PENTES (optionnel, mais utile) -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <span class="badge bg-light text-dark"><strong>black</strong> : {% if slopes.black is not none %}{{ "%.3f"|format(slopes.black) }} %/jour{% else %}—{% endif %}</span>
+          <span class="badge bg-light text-dark"><strong>cyan</strong> : {% if slopes.cyan is not none %}{{ "%.3f"|format(slopes.cyan) }} %/jour{% else %}—{% endif %}</span>
+          <span class="badge bg-light text-dark"><strong>magenta</strong> : {% if slopes.magenta is not none %}{{ "%.3f"|format(slopes.magenta) }} %/jour{% else %}—{% endif %}</span>
+          <span class="badge bg-light text-dark"><strong>yellow</strong> : {% if slopes.yellow is not none %}{{ "%.3f"|format(slopes.yellow) }} %/jour{% else %}—{% endif %}</span>
+          <span class="text-muted small ms-2">(pente = régression linéaire, %/jour)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- GRAPHE 4 COURBES -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h2 class="h6 mb-3">Historique consommation (KPAX)</h2>
+        <div class="alert alert-warning d-none" id="historyWarn"></div>
+        <canvas id="historyChart" height="120"></canvas>
+      </div>
+    </div>
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h2 class="h6 mb-3">État des toners (KPAX)</h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Couleur</th>
+            <th>% actuel</th>
+            <th>Dernière remontée</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in kpax_status %}
+            <tr>
+              <td><strong>{{ t.color }}</strong></td>
+              <td>
+                {% if t.last_pct is not none %}
+                  {{ t.last_pct | round(0) }}%
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ t.last_update or "—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="text-muted small">
+      (Ce tableau montre les 4 couleurs issues de KPAX, même si la recommandation ne concerne qu’un seul toner.)
+    </div>
+  </div>
+</div>
+
+    <!-- TABLE TONERS / % -->
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h6 mb-3">Toners de l’imprimante</h2>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Toner</th>
+                <th>Couleur</th>
+                <th>Jours restants</th>
+                <th>Date rupture estimée</th>
+                <th>Priorité</th>
+                <th>Dernière remontée</th>
+                <th>% actuel</th>
+                <th>Type livraison</th>
+                <th>Commentaire</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td>{{ r.get(col_id, "") }}</td>
+                  <td>{{ r.get(col_toner, "") }}</td>
+                  <td>{{ r.get("couleur", "") }}</td>
+                  <td>{{ r.get(col_days, "") }}</td>
+                  <td>{{ r.get(col_stockout, "") }}</td>
+                  <td>{{ r.get(col_priority, "") }}</td>
+                  <td>{{ r.get(col_last_update, "") }}</td>
+                  <td>
+                    {% if r.get(col_last_pct) is not none %}
+                      {{ r.get(col_last_pct) | round(0) }}%
+                    {% endif %}
+                  </td>
+                  <td>{{ r.get(col_type_liv, "") }}</td>
+                  <td>{{ r.get(col_comment, "") }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    const serial = {{ serial_display|tojson }};
+    const warn = document.getElementById("historyWarn");
+
+    function setWarn(msg) {
+      if (!msg) {
+        warn.classList.add("d-none");
+        warn.textContent = "";
+        return;
+      }
+      warn.textContent = msg;
+      warn.classList.remove("d-none");
+    }
+
+    async function loadHistory() {
+      const res = await fetch(`/api/printer_history?serial=${encodeURIComponent(serial)}`);
+      const data = await res.json();
+      if (data.error) {
+        setWarn("Erreur: " + data.error);
+        return;
+      }
+
+      const series = data.series || {};
+      const colors = ["black","cyan","magenta","yellow"];
+
+      // construire un set de labels = union de toutes les dates
+      const dateSet = new Set();
+      colors.forEach(c => (series[c] || []).forEach(p => dateSet.add(p.date)));
+      const labels = Array.from(dateSet).sort();
+
+      if (!labels.length) {
+        setWarn("Aucun historique KPAX trouvé pour cette imprimante.");
+        return;
+      }
+
+      // map date -> pct pour chaque couleur
+      function buildData(color) {
+        const m = new Map((series[color] || []).map(p => [p.date, p.pct]));
+        return labels.map(d => (m.has(d) ? m.get(d) : null));
+      }
+
+      const COLOR_MAP = {
+  black: "rgb(0,0,0)",
+  cyan: "rgb(0,180,255)",
+  magenta: "rgb(255,0,200)",
+  yellow: "rgb(255,200,0)",
+};
+
+const datasets = colors.map(c => ({
+  label: c,
+  data: buildData(c),
+  spanGaps: true,
+  tension: 0.25,
+  pointRadius: 1.5,
+  borderColor: COLOR_MAP[c],
+  backgroundColor: COLOR_MAP[c],
+}));
+
+
+      const ctx = document.getElementById("historyChart");
+      new Chart(ctx, {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true } },
+          scales: { y: { beginAtZero: true, suggestedMax: 100 } }
+        }
+      });
+    }
+
+    loadHistory();
+  </script>
+</body>
+</html>
