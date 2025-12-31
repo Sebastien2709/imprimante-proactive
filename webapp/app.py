@@ -34,6 +34,9 @@ KPAX_HISTORY_ENABLED = os.getenv("KPAX_HISTORY_ENABLED", "0") == "1"
 
 FORECASTS_PATH = BASE_DIR / "data" / "processed" / "consumables_forecasts.parquet"
 
+KPAX_HISTORY_CSV = BASE_DIR / "data" / "processed" / "kpax_history_light.csv"
+
+
 # ============================================================
 # COLONNES
 # ============================================================
@@ -217,9 +220,14 @@ def load_kpax_history_long():
     if _KPAX_HISTORY_LONG is not None:
         return _KPAX_HISTORY_LONG
 
-    if not KPAX_PATH.exists():
-        _KPAX_HISTORY_LONG = pd.DataFrame(columns=[COLUMN_SERIAL_DISPLAY, "color", "date", "pct"])
-        return _KPAX_HISTORY_LONG
+    if KPAX_HISTORY_CSV.exists():
+        df = pd.read_csv(KPAX_HISTORY_CSV)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df["pct"] = pd.to_numeric(df["pct"], errors="coerce")
+        df["serial_display"] = df["serial_display"].astype(str).str.strip()
+        df["color"] = df["color"].astype(str).str.lower().str.strip()
+        return df.dropna(subset=["date","pct"])
+
 
     serial_col = "$No serie$"
     date_update_col = "$Date update$"
