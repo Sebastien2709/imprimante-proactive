@@ -8,6 +8,25 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, a
 
 app = Flask(__name__)
 
+@app.route("/api/debug_kpax", methods=["GET"])
+def api_debug_kpax():
+    info = {
+        "BASE_DIR": str(BASE_DIR),
+        "KPAX_HISTORY_CSV": str(KPAX_HISTORY_CSV),
+        "KPAX_HISTORY_CSV_exists": KPAX_HISTORY_CSV.exists(),
+        "KPAX_LAST_CSV": str(KPAX_LAST_CSV),
+        "KPAX_LAST_CSV_exists": KPAX_LAST_CSV.exists(),
+    }
+    if KPAX_HISTORY_CSV.exists():
+        try:
+            df = pd.read_csv(KPAX_HISTORY_CSV)
+            info["kpax_history_rows"] = int(len(df))
+            info["kpax_history_cols"] = list(df.columns)
+            # montre 2 exemples
+            info["kpax_history_head"] = df.head(2).to_dict(orient="records")
+        except Exception as e:
+            info["kpax_history_read_error"] = str(e)
+    return jsonify(info)
 
 @app.route("/health")
 def health():
