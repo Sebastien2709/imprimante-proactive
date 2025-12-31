@@ -26,15 +26,17 @@ PROCESSED_JSON = BASE_DIR / "data" / "processed" / "processed_recommendations_ui
 # CSV léger (commité) : dernier état KPAX par (imprimante, couleur)
 KPAX_LAST_CSV = BASE_DIR / "data" / "processed" / "kpax_last_states.csv"
 
+# CSV léger (commité) : historique KPAX (format long) pour le graphe (safe Render)
+KPAX_HISTORY_CSV = BASE_DIR / "data" / "processed" / "kpax_history_light.csv"
+
 # Parquet lourd (LOCAL seulement si tu l’as). Sur Render, ne pas le commit.
 KPAX_PATH = BASE_DIR / "data" / "processed" / "kpax_consumables.parquet"
 
-# Active/désactive l'historique (parquet KPAX) pour les graphes
+# Active/désactive l'historique via parquet (LOCAL)
+# Sur Render tu laisses à 0
 KPAX_HISTORY_ENABLED = os.getenv("KPAX_HISTORY_ENABLED", "0") == "1"
 
 FORECASTS_PATH = BASE_DIR / "data" / "processed" / "consumables_forecasts.parquet"
-
-KPAX_HISTORY_CSV = BASE_DIR / "data" / "processed" / "kpax_history_light.csv"
 
 
 # ============================================================
@@ -62,7 +64,6 @@ KPAX_STALE_DAYS = 20
 
 # ============================================================
 # CACHES (IMPORTANT POUR RENDER)
-# - On ne charge RIEN de lourd au moment de l'import du module
 # ============================================================
 
 _SLOPES_MAP = None
@@ -155,10 +156,7 @@ def load_slopes_map():
         return {}
 
     out = df[[serial_col, color_col, slope_col]].copy()
-
-    out["serial_display"] = (
-        out[serial_col].astype(str).str.replace("$", "", regex=False).str.strip()
-    )
+    out["serial_display"] = out[serial_col].astype(str).str.replace("$", "", regex=False).str.strip()
     out["color_norm"] = out[color_col].astype(str).str.lower().str.strip()
     out["slope_val"] = pd.to_numeric(out[slope_col], errors="coerce")
     out = out.dropna(subset=["serial_display", "color_norm", "slope_val"])
@@ -203,31 +201,38 @@ def get_kpax_last_states():
 
 
 # ============================================================
-# KPAX - HISTORIQUE LONG (parquet lourd) - OPTIONNEL
+# KPAX - HISTORIQUE LONG
+# - Priorité au CSV léger (safe Render)
+# - Sinon parquet lourd (local) si KPAX_HISTORY_ENABLED=1
 # ============================================================
 
 def load_kpax_history_long():
-    """
-    DF long: serial_display, color, date, pct
-    - Si KPAX_HISTORY_ENABLED=False => renvoie vide (pas de parquet)
-    - Sinon, lit KPAX_PATH (local) et met en cache
-    """
     global _KPAX_HISTORY_LONG
-
-    if not KPAX_HISTORY_ENABLED:
-        return pd.DataFrame(columns=[COLUMN_SERIAL_DISPLAY, "color", "date", "pct"])
 
     if _KPAX_HISTORY_LONG is not None:
         return _KPAX_HISTORY_LONG
 
+    # 1) CSV léger (recommandé, fonctionne sur Render)
     if KPAX_HISTORY_CSV.exists():
         df = pd.read_csv(KPAX_HISTORY_CSV)
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df["pct"] = pd.to_numeric(df["pct"], errors="coerce")
         df["serial_display"] = df["serial_display"].astype(str).str.strip()
         df["color"] = df["color"].astype(str).str.lower().str.strip()
-        return df.dropna(subset=["date","pct"])
+        df = df.dropna(subset=["date", "pct"])
+        _KPAX_HISTORY_LONG = df
+        print("[KPAX] Historique chargé depuis CSV:", KPAX_HISTORY_CSV, "rows:", len(df))
+        return _KPAX_HISTORY_LONG
 
+    # 2) Sinon, historique désactivé -> pas de points
+    if not KPAX_HISTORY_ENABLED:
+        _KPAX_HISTORY_LONG = pd.DataFrame(columns=[COLUMN_SERIAL_DISPLAY, "color", "date", "pct"])
+        return _KPAX_HISTORY_LONG
+
+    # 3) Parquet lourd (local)
+    if not KPAX_PATH.exists():
+        _KPAX_HISTORY_LONG = pd.DataFrame(columns=[COLUMN_SERIAL_DISPLAY, "color", "date", "pct"])
+        return _KPAX_HISTORY_LONG
 
     serial_col = "$No serie$"
     date_update_col = "$Date update$"
@@ -256,17 +261,14 @@ def load_kpax_history_long():
     for color, col in color_cols.items():
         if col not in df.columns:
             continue
-
         pct_raw = df[col].astype(str).str.strip().str.strip("$")
         pct = pd.to_numeric(pct_raw, errors="coerce")
-
         tmp = pd.DataFrame({
             COLUMN_SERIAL_DISPLAY: serial_display,
             "color": color,
             "date": date_chosen,
             "pct": pct
         }).dropna(subset=["date", "pct"])
-
         parts.append(tmp)
 
     if parts:
@@ -311,9 +313,7 @@ def load_data():
     if COLUMN_ID not in df.columns:
         df[COLUMN_ID] = range(1, len(df) + 1)
 
-    df[COLUMN_SERIAL_DISPLAY] = (
-        df[COLUMN_SERIAL].astype(str).str.replace("$", "", regex=False).str.strip()
-    )
+    df[COLUMN_SERIAL_DISPLAY] = df[COLUMN_SERIAL].astype(str).str.replace("$", "", regex=False).str.strip()
 
     if COLUMN_DAYS in df.columns:
         df[COLUMN_DAYS] = pd.to_numeric(df[COLUMN_DAYS], errors="coerce")
@@ -342,7 +342,6 @@ def load_data():
         df[COLUMN_LAST_UPDATE] = pd.NaT
         df[COLUMN_LAST_PCT] = pd.NA
 
-    # rupture flag + incohérence
     today = pd.Timestamp.today().normalize()
     df[COLUMN_LAST_UPDATE] = pd.to_datetime(df.get(COLUMN_LAST_UPDATE), errors="coerce")
     df["days_since_last"] = (today - df[COLUMN_LAST_UPDATE]).dt.days
@@ -378,23 +377,13 @@ def api_consumption():
 
     slopes_map = get_slopes_map()
 
-    # historique désactivé => renvoie slope forecasts + pas de points
-    if not KPAX_HISTORY_ENABLED:
-        slope_fallback = slopes_map.get((serial, color))
-        return jsonify({
-            "serial": serial,
-            "color": color,
-            "points": [],
-            "slope_pct_per_day": slope_fallback,
-            "slope_source": "forecasts_fallback" if slope_fallback is not None else None
-        })
-
     hist = load_kpax_history_long()
     sub = hist[
         (hist[COLUMN_SERIAL_DISPLAY].astype(str) == serial)
         & (hist["color"].astype(str).str.lower() == color)
     ].copy()
 
+    # Si pas d'historique => fallback forecasts
     if sub.empty:
         slope_fallback = slopes_map.get((serial, color))
         return jsonify({
@@ -442,10 +431,6 @@ def api_printer_history():
     serial = (request.args.get("serial") or "").strip()
     if not serial:
         return jsonify({"error": "missing serial"}), 400
-
-    # historique désactivé => renvoie vide
-    if not KPAX_HISTORY_ENABLED:
-        return jsonify({"serial": serial, "series": {c: [] for c in ["black", "cyan", "magenta", "yellow"]}})
 
     hist = load_kpax_history_long()
     sub = hist[hist[COLUMN_SERIAL_DISPLAY].astype(str) == serial].copy().sort_values("date")
@@ -650,7 +635,7 @@ def printer_detail(serial_display):
     slopes_map = get_slopes_map()
     slopes = {c: slopes_map.get((serial_display, c)) for c in ["black", "cyan", "magenta", "yellow"]}
 
-    # ---- KPAX STATUS (toujours depuis le CSV léger) ----
+    # KPAX status depuis le CSV léger "kpax_last_states.csv"
     kpax_last = get_kpax_last_states()
     ksub = kpax_last[kpax_last["serial_display"].astype(str) == serial_display].copy()
 
