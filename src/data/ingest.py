@@ -14,11 +14,19 @@ def find_latest(pattern: str) -> Path:
 
     def extract_date(p: Path):
         # cherche un bloc de 8 chiffres type 15122025
-        m = re.search(r"(\d{8})", p.name)
+        m = re.search(r"(\d{7,8})", p.name)
         if not m:
             return None
         s = m.group(1)  # DDMMYYYY
-        dd, mm, yyyy = int(s[:2]), int(s[2:4]), int(s[4:])
+        if len(s) == 8:
+            dd, mm, yyyy = int(s[:2]), int(s[2:4]), int(s[4:])
+        else:
+            # Format 7 chiffres rencontré sur certains exports (mois sans zéro) : 2612026 => 26/01/2026
+            # Hypothèse : JJ + M + AAAA (jour sur 2 chiffres)
+            dd = int(s[:2])
+            mm = int(s[2:-4])  # 1 chiffre (ex: "1")
+            yyyy = int(s[-4:])
+
         return (yyyy, mm, dd)
 
     dated = [(p, extract_date(p)) for p in candidates]
