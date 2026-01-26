@@ -425,28 +425,7 @@
       const priorityCounts = JSON.parse(document.getElementById("priority-data").textContent);
       const colorCounts = JSON.parse(document.getElementById("color-data").textContent);
 
-      // ✅ Filtre rupture KPAX (client-side)
-      const ruptureCheckbox = document.getElementById("showRupture");
 
-  function applyRuptureFilter() {
-    const show = ruptureCheckbox ? ruptureCheckbox.checked : true;
-
-    // 1) masque/affiche les lignes rupture
-    document.querySelectorAll("tr[data-rupture='1']").forEach(tr => {
-      tr.style.display = show ? "" : "none";
-    });
-
-    // 2) masque la carte entière si aucune ligne n'est visible
-    document.querySelectorAll(".printer-card").forEach(card => {
-      const visibleRows = card.querySelectorAll("tbody tr:not([style*='display: none'])");
-      card.style.display = (visibleRows.length > 0) ? "" : "none";
-    });
-  }
-
-  if (ruptureCheckbox) {
-    ruptureCheckbox.addEventListener("change", applyRuptureFilter);
-    applyRuptureFilter();
-  }
 
       // Graphique par priorité
       const prCtx = document.getElementById('priorityChart');
