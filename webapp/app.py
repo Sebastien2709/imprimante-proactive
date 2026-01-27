@@ -479,13 +479,14 @@ def api_printer_history():
     if not serial:
         return jsonify({"error": "missing serial"}), 400
 
-    hist = load_kpax_history_long()
-    sub = hist[hist[COLUMN_SERIAL_DISPLAY].astype(str) == serial].copy().sort_values("date")
+    # ✅ lecture CHUNKED uniquement pour ce serial (safe Render)
+    hist = load_kpax_history_for_serial(serial)
 
     series = {c: [] for c in ["black", "cyan", "magenta", "yellow"]}
 
-    if not sub.empty:
-        for color, g in sub.groupby("color"):
+    if not hist.empty:
+        hist = hist.sort_values("date")
+        for color, g in hist.groupby("color"):
             color = str(color).lower().strip()
             if color not in series:
                 continue
@@ -496,6 +497,7 @@ def api_printer_history():
             ]
 
     return jsonify({"serial": serial, "series": series})
+
 
 
 # ============================================================
