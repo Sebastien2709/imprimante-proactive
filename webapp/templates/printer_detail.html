@@ -140,21 +140,27 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
-    const serial = {{ serial_display|tojson }};
-    const warn = document.getElementById("historyWarn");
+  const serial = {{ serial_display|tojson }};
+  const warn = document.getElementById("historyWarn");
 
-    function setWarn(msg) {
-      if (!msg) {
-        warn.classList.add("d-none");
-        warn.textContent = "";
+  function setWarn(msg) {
+    if (!msg) {
+      warn.classList.add("d-none");
+      warn.textContent = "";
+      return;
+    }
+    warn.textContent = msg;
+    warn.classList.remove("d-none");
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch(`/api/printer_history?serial=${encodeURIComponent(serial)}`);
+      if (!res.ok) {
+        setWarn(`Erreur API (${res.status}) sur /api/printer_history`);
         return;
       }
-      warn.textContent = msg;
-      warn.classList.remove("d-none");
-    }
 
-    async function loadHistory() {
-      const res = await fetch(`/api/printer_history?serial=${encodeURIComponent(serial)}`);
       const data = await res.json();
       if (data.error) {
         setWarn("Erreur: " + data.error);
@@ -164,30 +170,29 @@
       const series = data.series || {};
       const colors = ["black","cyan","magenta","yellow"];
 
-      // construire un set de labels = union de toutes les dates
       const dateSet = new Set();
       colors.forEach(c => (series[c] || []).forEach(p => dateSet.add(p.date)));
       const labels = Array.from(dateSet).sort();
 
       if (!labels.length) {
-        setWarn("Aucun historique KPAX trouvé pour cette imprimante.");
+        setWarn("Aucun historique KPAX trouvé pour cette imprimante (kpax_history_light.csv vide / absent ?).");
         return;
       }
 
-      // map date -> pct pour chaque couleur
       function buildData(color) {
         const m = new Map((series[color] || []).map(p => [p.date, p.pct]));
         return labels.map(d => (m.has(d) ? m.get(d) : null));
       }
 
       const COLOR_MAP = {
-  black: "rgb(0,0,0)",
-  cyan: "rgb(0,180,255)",
-  magenta: "rgb(255,0,200)",
-  yellow: "rgb(255,200,0)",
-};
+        black: "rgb(0,0,0)",
+        cyan: "rgb(0,180,255)",
+        magenta: "rgb(220,0,140)",
+        yellow: "rgb(255,200,0)"
+      };
 
-const datasets = colors.map(c => ({
+
+      const datasets = colors.map(c => ({
   label: c,
   data: buildData(c),
   spanGaps: true,
@@ -196,6 +201,7 @@ const datasets = colors.map(c => ({
   borderColor: COLOR_MAP[c],
   backgroundColor: COLOR_MAP[c],
 }));
+
 
 
       const ctx = document.getElementById("historyChart");
@@ -208,9 +214,15 @@ const datasets = colors.map(c => ({
           scales: { y: { beginAtZero: true, suggestedMax: 100 } }
         }
       });
-    }
 
-    loadHistory();
-  </script>
+      setWarn(null);
+    } catch (e) {
+      setWarn("Erreur JS (fetch/JSON) : " + (e?.message || e));
+    }
+  }
+
+  loadHistory();
+</script>
+
 </body>
 </html>
