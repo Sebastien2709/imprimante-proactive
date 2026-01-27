@@ -108,23 +108,22 @@
         </div>
 
         <!-- Filtre serveur rupture -->
-<div class="col-12">
-  <label class="form-label">Rupture (KPAX muet / dernière remontée trop ancienne)</label>
-  <div class="btn-group" role="group" aria-label="Filtre rupture">
-    <input type="radio" class="btn-check" name="rupture_mode" id="rupt_all" value="all"
-      {% if rupture_mode == "all" %}checked{% endif %}>
-    <label class="btn btn-outline-primary" for="rupt_all">Tout</label>
+        <div class="col-12">
+          <label class="form-label">Rupture (KPAX muet / dernière remontée trop ancienne)</label>
+          <div class="btn-group" role="group" aria-label="Filtre rupture">
+            <input type="radio" class="btn-check" name="rupture_mode" id="rupt_all" value="all"
+              {% if rupture_mode == "all" %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="rupt_all">Tout</label>
 
-    <input type="radio" class="btn-check" name="rupture_mode" id="rupt_ok" value="ok"
-      {% if rupture_mode == "ok" %}checked{% endif %}>
-    <label class="btn btn-outline-primary" for="rupt_ok">OK</label>
+            <input type="radio" class="btn-check" name="rupture_mode" id="rupt_ok" value="ok"
+              {% if rupture_mode == "ok" %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="rupt_ok">OK</label>
 
-    <input type="radio" class="btn-check" name="rupture_mode" id="rupt_rupture" value="rupture"
-      {% if rupture_mode == "rupture" %}checked{% endif %}>
-    <label class="btn btn-outline-primary" for="rupt_rupture">Rupture ?</label>
-  </div>
-</div>
-
+            <input type="radio" class="btn-check" name="rupture_mode" id="rupt_rupture" value="rupture"
+              {% if rupture_mode == "rupture" %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="rupt_rupture">Rupture ?</label>
+          </div>
+        </div>
 
         <div class="col-12 d-flex justify-content-end">
           <button type="submit" class="btn btn-primary me-2">Filtrer</button>
@@ -167,9 +166,7 @@
                   Détails
                 </a>
 
-
                 <div class="mt-2" data-slopes-for="{{ printer.serial_display }}"></div>
-
 
                 {% if printer.client %}
                   <span class="ms-3"><strong>Client :</strong> {{ printer.client }}</span>
@@ -425,8 +422,6 @@
       const priorityCounts = JSON.parse(document.getElementById("priority-data").textContent);
       const colorCounts = JSON.parse(document.getElementById("color-data").textContent);
 
-
-
       // Graphique par priorité
       const prCtx = document.getElementById('priorityChart');
       if (prCtx && Object.keys(priorityCounts).length > 0) {
@@ -467,6 +462,13 @@
 
       let slopeChart = null;
       let currentSerial = null;
+
+      const COLOR_MAP = {
+        black: "rgb(0,0,0)",
+        cyan: "rgb(0,174,239)",
+        magenta: "rgb(236,0,140)",
+        yellow: "rgb(255,242,0)",
+      };
 
       function destroySlopeChart() {
         if (slopeChart) {
@@ -512,7 +514,6 @@
         if (slope === null || slope === undefined) {
           slopeValuePill.textContent = "pente: —";
         } else {
-          // affichage plus lisible
           const s = Number(slope);
           slopeValuePill.textContent = `pente: ${s.toFixed(3)} %/jour`;
         }
@@ -530,16 +531,20 @@
         const labels = points.map(p => p.date);
         const values = points.map(p => p.pct);
 
+        const lineColor = COLOR_MAP[c] || "rgb(0,0,0)";
+
         const ctx = document.getElementById("slopeChart");
         slopeChart = new Chart(ctx, {
           type: "line",
           data: {
             labels,
             datasets: [{
-              label: "% toner",
+              label: `% toner (${c})`,
               data: values,
               tension: 0.25,
-              pointRadius: 2
+              pointRadius: 2,
+              borderColor: lineColor,
+              backgroundColor: lineColor
             }]
           },
           options: {
@@ -577,57 +582,59 @@
     </script>
 
     <script>
-  function formatSlope(v) {
-    if (v === null || v === undefined || Number.isNaN(v)) return "—";
-    const n = Number(v);
-    return `${n.toFixed(3)} %/jour`;
-  }
+      function formatSlope(v) {
+        if (v === null || v === undefined || Number.isNaN(v)) return "—";
+        const n = Number(v);
+        return `${n.toFixed(3)} %/jour`;
+      }
 
-  function slopeBadge(color, value) {
-    const txt = formatSlope(value);
-    return `
-      <span class="badge bg-light text-dark me-2 mb-1">
-        <strong>${color}</strong> : ${txt}
-      </span>
-    `;
-  }
+      function slopeBadge(color, value) {
+        const txt = formatSlope(value);
+        return `
+          <span class="badge bg-light text-dark me-2 mb-1">
+            <strong>${color}</strong> : ${txt}
+          </span>
+        `;
+      }
 
-  async function loadPrinterSlopes(serial) {
-    const container = document.querySelector(`[data-slopes-for="${CSS.escape(serial)}"]`);
-    if (!container) return;
+      async function loadPrinterSlopes(serial) {
+        const container = document.querySelector(`[data-slopes-for="${CSS.escape(serial)}"]`);
+        if (!container) return;
 
-    container.innerHTML = `<span class="text-muted small">Chargement…</span>`;
+        container.innerHTML = `<span class="text-muted small">Chargement…</span>`;
 
-    const url = `/api/slopes?serial=${encodeURIComponent(serial)}`;
-    const res = await fetch(url);
-    const data = await res.json();
+        const url = `/api/slopes?serial=${encodeURIComponent(serial)}`;
+        const res = await fetch(url);
+        const data = await res.json();
 
-    if (data.error) {
-      container.innerHTML = `<span class="text-danger small">Erreur: ${data.error}</span>`;
-      return;
-    }
+        if (data.error) {
+          container.innerHTML = `<span class="text-danger small">Erreur: ${data.error}</span>`;
+          return;
+        }
 
-    const s = data.slopes || {};
-    container.innerHTML = `
-      <div class="d-flex flex-wrap align-items-center">
-        ${slopeBadge("black", s.black)}
-        ${slopeBadge("cyan", s.cyan)}
-        ${slopeBadge("magenta", s.magenta)}
-        ${slopeBadge("yellow", s.yellow)}
-      </div>
-      <div class="text-muted small mt-1">
-        (pente = régression linéaire, %/jour ; “—” si pas assez de points)
-      </div>
-    `;
-  }
+        const s = data.slopes || {};
+        container.innerHTML = `
+          <div class="d-flex flex-wrap align-items-center">
+            ${slopeBadge("black", s.black)}
+            ${slopeBadge("cyan", s.cyan)}
+            ${slopeBadge("magenta", s.magenta)}
+            ${slopeBadge("yellow", s.yellow)}
+          </div>
+          <div class="text-muted small mt-1">
+            (pente = régression linéaire, %/jour ; “—” si pas assez de points)
+          </div>
+        `;
+      }
 
-  document.querySelectorAll(".printer-slopes-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const serial = btn.dataset.serial;
-      loadPrinterSlopes(serial);
-    });
-  });
-</script>
+      // Si tu ajoutes un bouton dédié pour charger les pentes imprimante,
+      // donne-lui la classe "printer-slopes-btn" et un data-serial.
+      document.querySelectorAll(".printer-slopes-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const serial = btn.dataset.serial;
+          loadPrinterSlopes(serial);
+        });
+      });
+    </script>
 
   </body>
 </html>

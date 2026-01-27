@@ -7,6 +7,8 @@ import pandas as pd
 from flask import Flask, render_template, request, redirect, url_for, jsonify, abort
 
 app = Flask(__name__)
+
+
 def load_kpax_history_for_serial(serial: str) -> pd.DataFrame:
     """
     Lit kpax_history_light.csv en CHUNKS et ne garde en mémoire
@@ -35,6 +37,7 @@ def load_kpax_history_for_serial(serial: str) -> pd.DataFrame:
     df = df.dropna(subset=["date", "pct"])
     return df
 
+
 @app.route("/api/debug_kpax", methods=["GET"])
 def api_debug_kpax():
     info = {
@@ -54,6 +57,7 @@ def api_debug_kpax():
         except Exception as e:
             info["kpax_history_read_error"] = str(e)
     return jsonify(info)
+
 
 @app.route("/health")
 def health():
@@ -425,7 +429,6 @@ def api_consumption():
 
     hist = load_kpax_history_for_serial(serial)
     sub = hist[hist["color"].astype(str).str.lower() == color].copy()
-
 
     # Si pas d'historique => fallback forecasts
     if sub.empty:

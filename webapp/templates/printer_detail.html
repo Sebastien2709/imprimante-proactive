@@ -55,40 +55,41 @@
         <canvas id="historyChart" height="120"></canvas>
       </div>
     </div>
-<div class="card shadow-sm mb-3">
-  <div class="card-body">
-    <h2 class="h6 mb-3">État des toners (KPAX)</h2>
-    <div class="table-responsive">
-      <table class="table table-sm align-middle">
-        <thead class="table-light">
-          <tr>
-            <th>Couleur</th>
-            <th>% actuel</th>
-            <th>Dernière remontée</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in kpax_status %}
-            <tr>
-              <td><strong>{{ t.color }}</strong></td>
-              <td>
-                {% if t.last_pct is not none %}
-                  {{ t.last_pct | round(0) }}%
-                {% else %}
-                  —
-                {% endif %}
-              </td>
-              <td>{{ t.last_update or "—" }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h2 class="h6 mb-3">État des toners (KPAX)</h2>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Couleur</th>
+                <th>% actuel</th>
+                <th>Dernière remontée</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in kpax_status %}
+                <tr>
+                  <td><strong>{{ t.color }}</strong></td>
+                  <td>
+                    {% if t.last_pct is not none %}
+                      {{ t.last_pct | round(0) }}%
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>{{ t.last_update or "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="text-muted small">
+          (Ce tableau montre les 4 couleurs issues de KPAX, même si la recommandation ne concerne qu’un seul toner.)
+        </div>
+      </div>
     </div>
-    <div class="text-muted small">
-      (Ce tableau montre les 4 couleurs issues de KPAX, même si la recommandation ne concerne qu’un seul toner.)
-    </div>
-  </div>
-</div>
 
     <!-- TABLE TONERS / % -->
     <div class="card shadow-sm">
@@ -140,90 +141,86 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
-  const serial = {{ serial_display|tojson }};
-  const warn = document.getElementById("historyWarn");
+    const serial = {{ serial_display|tojson }};
+    const warn = document.getElementById("historyWarn");
 
-  function setWarn(msg) {
-    if (!msg) {
-      warn.classList.add("d-none");
-      warn.textContent = "";
-      return;
+    function setWarn(msg) {
+      if (!msg) {
+        warn.classList.add("d-none");
+        warn.textContent = "";
+        return;
+      }
+      warn.textContent = msg;
+      warn.classList.remove("d-none");
     }
-    warn.textContent = msg;
-    warn.classList.remove("d-none");
-  }
 
-  async function loadHistory() {
-    try {
-      const res = await fetch(`/api/printer_history?serial=${encodeURIComponent(serial)}`);
-      if (!res.ok) {
-        setWarn(`Erreur API (${res.status}) sur /api/printer_history`);
-        return;
-      }
-
-      const data = await res.json();
-      if (data.error) {
-        setWarn("Erreur: " + data.error);
-        return;
-      }
-
-      const series = data.series || {};
-      const colors = ["black","cyan","magenta","yellow"];
-
-      const dateSet = new Set();
-      colors.forEach(c => (series[c] || []).forEach(p => dateSet.add(p.date)));
-      const labels = Array.from(dateSet).sort();
-
-      if (!labels.length) {
-        setWarn("Aucun historique KPAX trouvé pour cette imprimante (kpax_history_light.csv vide / absent ?).");
-        return;
-      }
-
-      function buildData(color) {
-        const m = new Map((series[color] || []).map(p => [p.date, p.pct]));
-        return labels.map(d => (m.has(d) ? m.get(d) : null));
-      }
-
-      const COLOR_MAP = {
-        black: "rgb(0,0,0)",
-        cyan: "rgb(0,174,239)",
-        magenta: "rgb(236,0,140)",
-        yellow: "rgb(255,242,0)",
-      };
-
-
-
-      const datasets = colors.map(c => ({
-  label: c,
-  data: buildData(c),
-  spanGaps: true,
-  tension: 0.25,
-  pointRadius: 1.5,
-  borderColor: COLOR_MAP[c],
-  backgroundColor: COLOR_MAP[c],
-}));
-
-
-
-      const ctx = document.getElementById("historyChart");
-      new Chart(ctx, {
-        type: "line",
-        data: { labels, datasets },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: true } },
-          scales: { y: { beginAtZero: true, suggestedMax: 100 } }
+    async function loadHistory() {
+      try {
+        const res = await fetch(`/api/printer_history?serial=${encodeURIComponent(serial)}`);
+        if (!res.ok) {
+          setWarn(`Erreur API (${res.status}) sur /api/printer_history`);
+          return;
         }
-      });
 
-      setWarn(null);
-    } catch (e) {
-      setWarn("Erreur JS (fetch/JSON) : " + (e?.message || e));
+        const data = await res.json();
+        if (data.error) {
+          setWarn("Erreur: " + data.error);
+          return;
+        }
+
+        const series = data.series || {};
+        const colors = ["black","cyan","magenta","yellow"];
+
+        const dateSet = new Set();
+        colors.forEach(c => (series[c] || []).forEach(p => dateSet.add(p.date)));
+        const labels = Array.from(dateSet).sort();
+
+        if (!labels.length) {
+          setWarn("Aucun historique KPAX trouvé pour cette imprimante (kpax_history_light.csv vide / absent ?).");
+          return;
+        }
+
+        function buildData(color) {
+          const m = new Map((series[color] || []).map(p => [p.date, p.pct]));
+          return labels.map(d => (m.has(d) ? m.get(d) : null));
+        }
+
+        const COLOR_MAP = {
+          black: "rgb(0,0,0)",
+          cyan: "rgb(0,174,239)",
+          magenta: "rgb(236,0,140)",
+          yellow: "rgb(255,242,0)",
+        };
+
+        const datasets = colors.map(c => ({
+          label: c,
+          data: buildData(c),
+          spanGaps: true,
+          tension: 0.25,
+          pointRadius: 1.5,
+          borderColor: COLOR_MAP[c],
+          backgroundColor: COLOR_MAP[c],
+        }));
+
+        const ctx = document.getElementById("historyChart");
+        new Chart(ctx, {
+          type: "line",
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: true } },
+            scales: { y: { beginAtZero: true, suggestedMax: 100 } }
+          }
+        });
+
+        setWarn(null);
+      } catch (e) {
+        setWarn("Erreur JS (fetch/JSON) : " + (e?.message || e));
+      }
     }
-  }
 
-  loadHistory();
-</script>
+    loadHistory();
+  </script>
 
 </body>
 </html>
