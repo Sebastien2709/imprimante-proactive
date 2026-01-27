@@ -7,6 +7,33 @@ import pandas as pd
 from flask import Flask, render_template, request, redirect, url_for, jsonify, abort
 
 app = Flask(__name__)
+def load_kpax_history_for_serial(serial: str) -> pd.DataFrame:
+    """
+    Lit kpax_history_light.csv en CHUNKS et ne garde en mémoire
+    que les lignes du serial demandé.
+    """
+    serial = (serial or "").strip()
+    if not serial or not KPAX_HISTORY_CSV.exists():
+        return pd.DataFrame(columns=[COLUMN_SERIAL_DISPLAY, "color", "date", "pct"])
+
+    usecols = ["serial_display", "color", "date", "pct"]
+    chunks = []
+    for chunk in pd.read_csv(KPAX_HISTORY_CSV, usecols=usecols, chunksize=250_000):
+        # normalisation light (important pour match)
+        chunk["serial_display"] = chunk["serial_display"].astype(str).str.strip()
+        sub = chunk[chunk["serial_display"] == serial]
+        if not sub.empty:
+            chunks.append(sub)
+
+    if not chunks:
+        return pd.DataFrame(columns=[COLUMN_SERIAL_DISPLAY, "color", "date", "pct"])
+
+    df = pd.concat(chunks, ignore_index=True)
+    df["color"] = df["color"].astype(str).str.lower().str.strip()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["pct"] = pd.to_numeric(df["pct"], errors="coerce")
+    df = df.dropna(subset=["date", "pct"])
+    return df
 
 @app.route("/api/debug_kpax", methods=["GET"])
 def api_debug_kpax():
@@ -396,11 +423,9 @@ def api_consumption():
 
     slopes_map = get_slopes_map()
 
-    hist = load_kpax_history_long()
-    sub = hist[
-        (hist[COLUMN_SERIAL_DISPLAY].astype(str) == serial)
-        & (hist["color"].astype(str).str.lower() == color)
-    ].copy()
+    hist = load_kpax_history_for_serial(serial)
+    sub = hist[hist["color"].astype(str).str.lower() == color].copy()
+
 
     # Si pas d'historique => fallback forecasts
     if sub.empty:
