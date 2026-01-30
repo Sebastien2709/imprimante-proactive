@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 from urllib.parse import urlparse
+from collections import defaultdict
+import re
 
 import msal
 import requests
@@ -24,7 +26,7 @@ GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 # --- PATTERNS RECHERCHÉS ---
 TARGET_PATTERNS = [
-    "AI Export_Kpax_consumables_ADEXGROUP",
+    "AI_Export_Kpax_consumables_ADEXGROUP",
     "AI_Export_ItemLedgEntries_ADEXGROUP",
     "AI_Export_SalesPagesMeters_ADEXGROUP"
 ]
@@ -85,8 +87,21 @@ def get_drive_id(token, site_id, library_name):
 def list_files_in_folder(token, drive_id, folder_path):
     folder_path = folder_path.lstrip("/")
     url = f"{GRAPH_BASE_URL}/drives/{drive_id}/root:/{folder_path}:/children"
-    data = graph_get(url, token)
-    return [item for item in data.get("value", []) if "file" in item]
+    
+    all_items = []
+    while url:
+        headers = {"Authorization": f"Bearer {token}"}
+        r = requests.get(url, headers=headers)
+        print(f"GET {url} → {r.status_code}")
+        r.raise_for_status()
+        data = r.json()
+        
+        all_items.extend([item for item in data.get("value", []) if "file" in item])
+        
+        # Pagination
+        url = data.get("@odata.nextLink")
+    
+    return all_items
 
 
 def download_file(token, drive_id, item_id, dest_path):
@@ -103,7 +118,31 @@ def download_file(token, drive_id, item_id, dest_path):
 
 def filename_matches(name):
     """Retourne True si le fichier correspond à un des patterns."""
-    return any(pattern in name for pattern in TARGET_PATTERNS)
+    # Normaliser les espaces/underscores pour la comparaison
+    normalized = name.replace(" ", "_")
+    return any(p in normalized for p in TARGET_PATTERNS)
+
+
+def extract_date_from_filename(name):
+    """Extrait la date du nom de fichier et retourne un tuple (année, mois, jour) pour tri."""
+    match = re.search(r"(\d{7,8})\.txt$", name)
+    if not match:
+        return (0, 0, 0)
+    
+    date_str = match.group(1)
+    
+    if len(date_str) == 8:
+        # Format DDMMYYYY
+        dd = int(date_str[:2])
+        mm = int(date_str[2:4])
+        yyyy = int(date_str[4:])
+    else:
+        # Format DDMYYYY (7 chiffres)
+        dd = int(date_str[:2])
+        mm = int(date_str[2:-4])
+        yyyy = int(date_str[-4:])
+    
+    return (yyyy, mm, dd)
 
 
 def main():
@@ -120,29 +159,45 @@ def main():
     remote_files = list_files_in_folder(token, drive_id, FOLDER_PATH)
     print(f"📄 {len(remote_files)} fichiers trouvés sur SharePoint")
 
-    local_files = {f.name for f in LOCAL_DATA_DIR.glob("*.txt")}
-
-    print("\n🎯 Fichiers à traiter :")
+    print("\n🎯 Téléchargement des fichiers les plus récents...")
+    
+    # Grouper par pattern
+    by_pattern = defaultdict(list)
+    
     for item in remote_files:
         name = item["name"]
-
+        
         # Filtrer les .txt
         if not name.lower().endswith(".txt"):
             continue
-
+        
         # Filtrer selon les patterns
         if not filename_matches(name):
             continue
-
-        # Filtrer ceux déjà présents en local
-        if name in local_files:
-            print(f"   ⏭️  Déjà présent : {name}")
+        
+        # Extraire la date
+        date_tuple = extract_date_from_filename(name)
+        
+        # Trouver le pattern correspondant
+        normalized_name = name.replace(" ", "_")
+        for pattern in TARGET_PATTERNS:
+            if pattern in normalized_name:
+                by_pattern[pattern].append((item, date_tuple, name))
+                break
+    
+    # Pour chaque pattern, télécharger uniquement le plus récent
+    for pattern, items in by_pattern.items():
+        if not items:
+            print(f"   ⚠️  Aucun fichier trouvé pour {pattern}")
             continue
-
-        # Téléchargement
-        print(f"⬇️  Téléchargement : {name}")
-        dest = LOCAL_DATA_DIR / name
-        download_file(token, drive_id, item["id"], dest)
+            
+        # Trier par date (tuple année, mois, jour)
+        sorted_items = sorted(items, key=lambda x: x[1], reverse=True)
+        latest_item, latest_date, latest_name = sorted_items[0]
+        
+        print(f"⬇️  {pattern}: {latest_name}")
+        dest = LOCAL_DATA_DIR / latest_name
+        download_file(token, drive_id, latest_item["id"], dest)
 
     print("\n✅ Terminé.")
 
