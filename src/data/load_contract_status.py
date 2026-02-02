@@ -72,12 +72,12 @@ def pick_col(df: pd.DataFrame, candidates: list[str]):
     return None
 
 
-def find_latest_item_ledger():
+def find_latest_meters_file():
     """
-    Trouve le fichier AI_Export_ItemLedgEntries_*.txt le plus récent.
-    Même logique que dans ingest.py
+    Trouve le fichier AI_Export_SalesPagesMeters_*.txt le plus récent.
+    C'est dans CE fichier que se trouvent les colonnes de statut de contrat.
     """
-    pattern = "AI*Export*Item*Ledg*Entries*ADEXGROUP*"
+    pattern = "AI*Export*SalesPages*Meters*ADEXGROUP*"
     candidates = list(RAW_DIR.glob(pattern))
     
     if not candidates:
@@ -123,16 +123,16 @@ def normalize_serial(s) -> str:
 
 def load_contract_status() -> pd.DataFrame:
     """
-    Charge le fichier ItemLedgEntries et extrait :
+    Charge le fichier SalesPagesMeters et extrait :
     - serial_norm
     - statut_contrat (Signé / Annulé)
     - date_fin_contrat
     """
     
-    latest_file = find_latest_item_ledger()
+    latest_file = find_latest_meters_file()
     
     if latest_file is None:
-        print("[load_contract_status] Aucun fichier ItemLedgEntries trouvé → retour DataFrame vide")
+        print("[load_contract_status] Aucun fichier SalesPagesMeters trouvé → retour DataFrame vide")
         return pd.DataFrame(columns=["serial_norm", "statut_contrat", "date_fin_contrat"])
     
     print(f"[load_contract_status] Lecture : {latest_file.name}")
@@ -148,7 +148,7 @@ def load_contract_status() -> pd.DataFrame:
         
         # 1) Numéro de série
         serial_col = pick_col(df, [
-            "No. serie", "No serie", "serial", "$No serie$", "$No. serie$",
+            "$No serie$", "No serie", "$No. serie$", "No. serie", "serial",
             "no_serie", "NoSerie", "Serial"
         ])
         
@@ -160,7 +160,7 @@ def load_contract_status() -> pd.DataFrame:
         
         # 2) Statut contrat
         statut_col = pick_col(df, [
-            "Statut contrat", "$Statut contrat$", "statut_contrat",
+            "$Statut contrat$", "Statut contrat", "statut_contrat",
             "Contract Status", "ContractStatus"
         ])
         
@@ -173,7 +173,7 @@ def load_contract_status() -> pd.DataFrame:
         
         # 3) Date fin contrat
         date_fin_col = pick_col(df, [
-            "Date fin contrat", "$Date fin contrat$", "date_fin_contrat",
+            "$Date fin contrat$", "Date fin contrat", "date_fin_contrat",
             "Contract End Date", "DateFinContrat"
         ])
         

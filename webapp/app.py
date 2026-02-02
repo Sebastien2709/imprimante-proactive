@@ -237,12 +237,12 @@ def get_slopes_map():
 
 def load_contract_statuses():
     """
-    Charge les statuts de contrats depuis contract_statuses.parquet
+    Charge les statuts de contrats depuis contract_status.parquet
     (généré par src/data/load_contract_status.py)
     
     Colonnes attendues : serial_display, statut_contrat, date_fin_contrat
     """
-    contracts_path = BASE_DIR / "data" / "processed" / "contract_statuses.parquet"
+    contracts_path = BASE_DIR / "data" / "processed" / "contract_status.parquet"
     
     if not contracts_path.exists():
         print(f"[CONTRATS] Fichier introuvable : {contracts_path}")
@@ -456,6 +456,10 @@ def load_data():
     contracts = load_contract_statuses()
     
     if not contracts.empty:
+        # Renommer serial_norm en serial_display pour le merge
+        if "serial_norm" in contracts.columns and "serial_display" not in contracts.columns:
+            contracts = contracts.rename(columns={"serial_norm": "serial_display"})
+        
         before = len(df)
         df = df.merge(
             contracts,
@@ -481,6 +485,11 @@ def load_data():
     if nb_supprime > 0:
         print(f"[CONTRATS] {nb_supprime} lignes supprimées (contrat annulé sans date)")
         df = df[~mask_annule_sans_date].copy()
+    
+    # DEBUG: Afficher les statuts trouvés
+    if COLUMN_STATUT_CONTRAT in df.columns:
+        statut_counts = df[COLUMN_STATUT_CONTRAT].value_counts(dropna=False).to_dict()
+        print(f"[CONTRATS DEBUG] Statuts présents : {statut_counts}")
 
     # Cas 2: Annulé avec date → Flag "alerte_non_prioritaire"
     df["alerte_non_prioritaire"] = (
