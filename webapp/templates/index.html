@@ -59,6 +59,12 @@
             </p>
           </div>
           <div class="text-end">
+            {% if nb_alertes_non_prioritaires > 0 %}
+              <a href="/alertes" class="btn btn-danger btn-sm mb-2">
+                ⚠️ Alertes non prioritaires ({{ nb_alertes_non_prioritaires }})
+              </a>
+              <br>
+            {% endif %}
             <div class="chip"><span>Total</span> {{ total_rows }}</div>
             <div class="chip"><span>À traiter</span> {{ pending_rows }}</div>
             <div class="chip"><span>Envoyés</span> {{ sent_rows }}</div>
@@ -188,6 +194,15 @@
                   </span>
                 {% endif %}
 
+                <!-- Alerte contrat fin proche -->
+                {% if printer.alerte_fin_proche and printer.date_fin_contrat %}
+                  <div class="mt-2">
+                    <span class="badge bg-warning text-dark">
+                      ⚠️ Contrat se termine le {{ printer.date_fin_contrat }}
+                    </span>
+                  </div>
+                {% endif %}
+
                 <!-- Boutons rapides par toner (couleur) -->
                 {% if printer.colors_present and printer.colors_present|length > 0 %}
                   <div class="mt-2">
@@ -276,6 +291,7 @@
                             </span>
                           {% endif %}
                         </td>
+
 
                         <td>{{ r.get(col_last_update, '') }}</td>
 

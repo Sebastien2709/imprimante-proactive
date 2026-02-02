@@ -79,7 +79,7 @@ KPAX_LAST_CSV = BASE_DIR / "data" / "processed" / "kpax_last_states.csv"
 # CSV léger (commité) : historique KPAX (format long) pour le graphe (safe Render)
 KPAX_HISTORY_CSV = BASE_DIR / "data" / "processed" / "kpax_history_light.csv"
 
-# Parquet lourd (LOCAL seulement si tu l’as). Sur Render, ne pas le commit.
+# Parquet lourd (LOCAL seulement si tu l'as). Sur Render, ne pas le commit.
 KPAX_PATH = BASE_DIR / "data" / "processed" / "kpax_consumables.parquet"
 
 # Active/désactive l'historique via parquet (LOCAL)
@@ -105,6 +105,10 @@ COLUMN_COMMENT = "commentaire"
 COLUMN_STOCKOUT = "date_rupture_estimee"
 COLUMN_ID = "row_id"
 COLUMN_TYPE_LIV = "type_livraison"
+
+# Colonnes statut contrat
+COLUMN_STATUT_CONTRAT = "statut_contrat"
+COLUMN_DATE_FIN_CONTRAT = "date_fin_contrat"
 
 # KPAX dernières infos
 COLUMN_LAST_UPDATE = "last_update"
@@ -225,6 +229,42 @@ def get_slopes_map():
     if _SLOPES_MAP is None:
         _SLOPES_MAP = load_slopes_map()
     return _SLOPES_MAP
+
+
+# ============================================================
+# STATUTS DE CONTRATS (ItemLedgEntries)
+# ============================================================
+
+def load_contract_statuses():
+    """
+    Charge les statuts de contrats depuis contract_statuses.parquet
+    (généré par src/data/load_contract_status.py)
+    
+    Colonnes attendues : serial_display, statut_contrat, date_fin_contrat
+    """
+    contracts_path = BASE_DIR / "data" / "processed" / "contract_statuses.parquet"
+    
+    if not contracts_path.exists():
+        print(f"[CONTRATS] Fichier introuvable : {contracts_path}")
+        print("[CONTRATS] Exécutez d'abord : python src/data/load_contract_status.py")
+        return pd.DataFrame(columns=["serial_display", COLUMN_STATUT_CONTRAT, COLUMN_DATE_FIN_CONTRAT])
+    
+    try:
+        print(f"[CONTRATS] Lecture : {contracts_path}")
+        df = pd.read_parquet(contracts_path)
+        
+        # Renommer si besoin
+        if "statut_contrat" in df.columns and COLUMN_STATUT_CONTRAT not in df.columns:
+            df = df.rename(columns={"statut_contrat": COLUMN_STATUT_CONTRAT})
+        if "date_fin_contrat" in df.columns and COLUMN_DATE_FIN_CONTRAT not in df.columns:
+            df = df.rename(columns={"date_fin_contrat": COLUMN_DATE_FIN_CONTRAT})
+        
+        print(f"[CONTRATS] {len(df)} contrats chargés")
+        return df
+        
+    except Exception as e:
+        print(f"[CONTRATS] Erreur lors du chargement : {e}")
+        return pd.DataFrame(columns=["serial_display", COLUMN_STATUT_CONTRAT, COLUMN_DATE_FIN_CONTRAT])
 
 
 # ============================================================
@@ -410,7 +450,175 @@ def load_data():
     else:
         df["couleur_norm"] = ""
 
+    # ============================================================
+    # MERGE STATUTS DE CONTRATS
+    # ============================================================
+    contracts = load_contract_statuses()
+    
+    if not contracts.empty:
+        before = len(df)
+        df = df.merge(
+            contracts,
+            on="serial_display",
+            how="left"
+        )
+        after = len(df)
+        print(f"[MERGE CONTRATS] avant={before} après={after}")
+    else:
+        print("[MERGE CONTRATS] Pas de fichier contrats → colonnes vides.")
+        df[COLUMN_STATUT_CONTRAT] = pd.NA
+        df[COLUMN_DATE_FIN_CONTRAT] = pd.NaT
+
+    # ============================================================
+    # FILTRAGE SELON STATUT CONTRAT
+    # ============================================================
+    # Cas 1: Annulé sans date → SUPPRIMER complètement
+    mask_annule_sans_date = (
+        df[COLUMN_STATUT_CONTRAT].astype(str).str.lower().str.contains("annul", na=False) &
+        df[COLUMN_DATE_FIN_CONTRAT].isna()
+    )
+    nb_supprime = mask_annule_sans_date.sum()
+    if nb_supprime > 0:
+        print(f"[CONTRATS] {nb_supprime} lignes supprimées (contrat annulé sans date)")
+        df = df[~mask_annule_sans_date].copy()
+
+    # Cas 2: Annulé avec date → Flag "alerte_non_prioritaire"
+    df["alerte_non_prioritaire"] = (
+        df[COLUMN_STATUT_CONTRAT].astype(str).str.lower().str.contains("annul", na=False) &
+        df[COLUMN_DATE_FIN_CONTRAT].notna()
+    )
+    
+    # Cas 3: Signé avec date proche (< 30 jours) → Flag "alerte_contrat_fin_proche"
+    df["alerte_contrat_fin_proche"] = False
+    if COLUMN_DATE_FIN_CONTRAT in df.columns:
+        mask_signe = df[COLUMN_STATUT_CONTRAT].astype(str).str.lower().str.contains("sign", na=False)
+        mask_date_proche = df[COLUMN_DATE_FIN_CONTRAT].notna() & ((df[COLUMN_DATE_FIN_CONTRAT] - today).dt.days <= 30)
+        df.loc[mask_signe & mask_date_proche, "alerte_contrat_fin_proche"] = True
+
+    # Ajouter commentaires d'alerte
+    df.loc[df["alerte_non_prioritaire"], COLUMN_COMMENT] = (
+        "⚠️ Contrat annulé - Fin prévue le " + 
+        df.loc[df["alerte_non_prioritaire"], COLUMN_DATE_FIN_CONTRAT].dt.strftime("%d/%m/%Y")
+    )
+
+    nb_alertes_non_prio = df["alerte_non_prioritaire"].sum()
+    nb_alertes_fin_proche = df["alerte_contrat_fin_proche"].sum()
+    print(f"[CONTRATS] {nb_alertes_non_prio} alertes non prioritaires, {nb_alertes_fin_proche} contrats fin proche")
+
+    # ============================================================
+    # AJOUT "TONER BAS MAIS NON PRIORITAIRE" (KPAX < 3%)
+    # - Ne touche PAS au ML
+    # - Ajoute une ligne uniquement si (serial, couleur) pas deja recommande
+    # - Force priorite = 4
+    # - UNIQUEMENT si contrat de maintenance existe
+    # ============================================================
+    
+    if not kpax_last.empty and "couleur_norm" in df.columns:
+        # Couples deja presents dans les recos (ML/business)
+        existing_pairs = set(
+            zip(
+                df[COLUMN_SERIAL_DISPLAY].astype(str).str.strip(),
+                df["couleur_norm"].astype(str).str.lower().str.strip(),
+            )
+        )
+
+        low = kpax_last.copy()
+        low["serial_display"] = low["serial_display"].astype(str).str.strip()
+        low["color"] = low["color"].astype(str).str.lower().str.strip()
+        low["last_pct"] = pd.to_numeric(low["last_pct"], errors="coerce")
+        low = low[low["last_pct"].notna() & (low["last_pct"] < 3)]
+
+        extras = []
+        if not low.empty:
+            for _, row in low.iterrows():
+                s = row["serial_display"]
+                c = row["color"]
+
+                # si deja recommande => rien
+                if (s, c) in existing_pairs:
+                    continue
+
+                # recup infos client/contrat/ville/type_livraison depuis une autre ligne de cette imprimante si dispo
+                sub_s = df[df[COLUMN_SERIAL_DISPLAY].astype(str).str.strip() == s]
+                client_name = ""
+                contract_no = ""
+                city = ""
+                type_liv = ""
+                if not sub_s.empty:
+                    if COLUMN_CLIENT in sub_s.columns and not sub_s[COLUMN_CLIENT].isna().all():
+                        client_name = str(sub_s[COLUMN_CLIENT].dropna().astype(str).iloc[0])
+                    if COLUMN_CONTRACT in sub_s.columns and not sub_s[COLUMN_CONTRACT].isna().all():
+                        contract_no = str(sub_s[COLUMN_CONTRACT].dropna().astype(str).iloc[0])
+                    if COLUMN_CITY in sub_s.columns and not sub_s[COLUMN_CITY].isna().all():
+                        city = str(sub_s[COLUMN_CITY].dropna().astype(str).iloc[0])
+                    if COLUMN_TYPE_LIV in sub_s.columns and not sub_s[COLUMN_TYPE_LIV].isna().all():
+                        type_liv = str(sub_s[COLUMN_TYPE_LIV].dropna().astype(str).iloc[0])
+
+                # Si pas de contrat => on ignore (pas de P4)
+                if not contract_no or contract_no.strip() == "":
+                    continue
+
+                # Calculer days_since_last et rupture_kpax pour cette ligne P4
+                last_update_val = row.get("last_update")
+                if pd.notna(last_update_val):
+                    last_update_dt = pd.to_datetime(last_update_val, errors="coerce")
+                    if pd.notna(last_update_dt):
+                        days_since = (today - last_update_dt).days
+                        rupture_flag = days_since > KPAX_STALE_DAYS
+                    else:
+                        days_since = pd.NA
+                        rupture_flag = True
+                else:
+                    days_since = pd.NA
+                    rupture_flag = True
+
+                extras.append(
+                    {
+                        COLUMN_SERIAL: s,
+                        COLUMN_SERIAL_DISPLAY: s,
+                        COLUMN_TONER: c,
+                        "couleur": c,
+                        "couleur_norm": c,
+                        COLUMN_DAYS: pd.NA,
+                        COLUMN_STOCKOUT: pd.NA,
+                        COLUMN_PRIORITY: 4,
+                        COLUMN_CLIENT: client_name,
+                        COLUMN_CONTRACT: contract_no,
+                        COLUMN_CITY: city,
+                        COLUMN_TYPE_LIV: type_liv if type_liv else pd.NA,
+                        COLUMN_COMMENT: "Toner bas mais non prioritaire",
+                        COLUMN_LAST_UPDATE: last_update_val,
+                        COLUMN_LAST_PCT: float(row["last_pct"]) if pd.notna(row["last_pct"]) else pd.NA,
+                        "days_since_last": days_since,
+                        "rupture_kpax": rupture_flag,
+                        "warning_incoherence": False,
+                        "fallback_p4": True,
+                    }
+                )
+
+        if extras:
+            extra_df = pd.DataFrame(extras)
+
+            max_id = int(df[COLUMN_ID].max()) if COLUMN_ID in df.columns and df[COLUMN_ID].notna().any() else 0
+            extra_df[COLUMN_ID] = range(max_id + 1, max_id + 1 + len(extra_df))
+
+            df = pd.concat([df, extra_df], ignore_index=True)
+            print(f"[P4] {len(extras)} toner(s) ajoute(s) en priorite 4 (< 3%, avec contrat)")
+
+    # colonne fallback_p4 propre pour tout le DF
+    if "fallback_p4" not in df.columns:
+        df["fallback_p4"] = False
+    else:
+        df["fallback_p4"] = df["fallback_p4"].fillna(False).astype(bool)
+
+    # recast (securite)
+    if COLUMN_PRIORITY in df.columns:
+        df[COLUMN_PRIORITY] = pd.to_numeric(df[COLUMN_PRIORITY], errors="coerce").astype("Int64")
+    if COLUMN_DAYS in df.columns:
+        df[COLUMN_DAYS] = pd.to_numeric(df[COLUMN_DAYS], errors="coerce")
+
     return df
+
 
 
 # ============================================================
@@ -528,6 +736,18 @@ def index():
 
     filtered = df.copy()
 
+    # ============================================================
+    # FILTRER LES ALERTES NON PRIORITAIRES (contrats annulés avec date)
+    # Ces lignes ne s'affichent PAS dans l'accueil
+    # ============================================================
+    if "alerte_non_prioritaire" in filtered.columns:
+        # Convertir en bool proprement
+        filtered["alerte_non_prioritaire"] = filtered["alerte_non_prioritaire"].fillna(False).astype(bool)
+        nb_alertes_total = filtered["alerte_non_prioritaire"].sum()
+        filtered = filtered[~filtered["alerte_non_prioritaire"]].copy()
+    else:
+        nb_alertes_total = 0
+
     if serial_query:
         filtered = filtered[filtered[COLUMN_SERIAL_DISPLAY].str.contains(serial_query, case=False, na=False)]
 
@@ -568,8 +788,14 @@ def index():
         for serial_display, sub in filtered.groupby(COLUMN_SERIAL_DISPLAY):
             rows = sub.to_dict(orient="records")
 
-            min_days_left = float(sub[COLUMN_DAYS].min()) if COLUMN_DAYS in sub.columns else None
-            min_stockout_date = str(sub[COLUMN_STOCKOUT].min()) if COLUMN_STOCKOUT in sub.columns else None
+            min_days_left = float(sub[COLUMN_DAYS].min()) if COLUMN_DAYS in sub.columns and sub[COLUMN_DAYS].notna().any() else None
+            
+            # Pour min_stockout_date, on filtre d'abord les NA avant de faire le min
+            if COLUMN_STOCKOUT in sub.columns and sub[COLUMN_STOCKOUT].notna().any():
+                min_stockout_date = str(sub[COLUMN_STOCKOUT].dropna().min())
+            else:
+                min_stockout_date = None
+            
             min_priority = int(sub[COLUMN_PRIORITY].min()) if COLUMN_PRIORITY in sub.columns and sub[COLUMN_PRIORITY].notna().any() else None
 
             client_name = (
@@ -603,6 +829,14 @@ def index():
                 )
                 colors_present = sorted(colors_present)
 
+            # Alerte contrat fin proche
+            alerte_fin_proche = False
+            date_fin_contrat = None
+            if "alerte_contrat_fin_proche" in sub.columns:
+                alerte_fin_proche = sub["alerte_contrat_fin_proche"].any()
+            if COLUMN_DATE_FIN_CONTRAT in sub.columns and sub[COLUMN_DATE_FIN_CONTRAT].notna().any():
+                date_fin_contrat = sub[COLUMN_DATE_FIN_CONTRAT].dropna().iloc[0].strftime("%d/%m/%Y")
+
             grouped_printers.append({
                 "serial_display": serial_display,
                 "client": client_name,
@@ -613,6 +847,8 @@ def index():
                 "min_stockout_date": min_stockout_date,
                 "min_priority": min_priority,
                 "colors_present": colors_present,
+                "alerte_fin_proche": alerte_fin_proche,
+                "date_fin_contrat": date_fin_contrat,
             })
 
     priority_counts = {}
@@ -659,6 +895,117 @@ def index():
         total_rows=total_rows,
         pending_rows=pending_rows,
         sent_rows=sent_rows,
+        nb_alertes_non_prioritaires=nb_alertes_total,
+    )
+
+
+@app.route("/alertes", methods=["GET"])
+def alertes():
+    """Page dédiée aux alertes non prioritaires (contrats annulés avec date)"""
+    df = load_data()
+    processed_ids = load_processed_ids()
+    
+    # Filtrer uniquement les alertes non prioritaires
+    if "alerte_non_prioritaire" not in df.columns:
+        df["alerte_non_prioritaire"] = False
+    
+    alertes_df = df[df["alerte_non_prioritaire"]].copy()
+    
+    # Trier
+    sort_cols = []
+    if COLUMN_DATE_FIN_CONTRAT in alertes_df.columns:
+        sort_cols.append(COLUMN_DATE_FIN_CONTRAT)
+    if COLUMN_PRIORITY in alertes_df.columns:
+        sort_cols.append(COLUMN_PRIORITY)
+    if COLUMN_DAYS in alertes_df.columns:
+        sort_cols.append(COLUMN_DAYS)
+    sort_cols.append(COLUMN_CLIENT)
+    sort_cols.append(COLUMN_SERIAL_DISPLAY)
+    
+    if sort_cols:
+        alertes_df = alertes_df.sort_values(sort_cols)
+    
+    # Grouper par imprimante
+    grouped_printers = []
+    if not alertes_df.empty:
+        for serial_display, sub in alertes_df.groupby(COLUMN_SERIAL_DISPLAY):
+            rows = sub.to_dict(orient="records")
+            
+            min_days_left = float(sub[COLUMN_DAYS].min()) if COLUMN_DAYS in sub.columns and sub[COLUMN_DAYS].notna().any() else None
+            
+            if COLUMN_STOCKOUT in sub.columns and sub[COLUMN_STOCKOUT].notna().any():
+                min_stockout_date = str(sub[COLUMN_STOCKOUT].dropna().min())
+            else:
+                min_stockout_date = None
+            
+            min_priority = int(sub[COLUMN_PRIORITY].min()) if COLUMN_PRIORITY in sub.columns and sub[COLUMN_PRIORITY].notna().any() else None
+            
+            client_name = (
+                sub[COLUMN_CLIENT].dropna().astype(str).iloc[0]
+                if COLUMN_CLIENT in sub and not sub[COLUMN_CLIENT].isna().all()
+                else None
+            )
+            contract_no = (
+                sub[COLUMN_CONTRACT].dropna().astype(str).iloc[0]
+                if COLUMN_CONTRACT in sub and not sub[COLUMN_CONTRACT].isna().all()
+                else None
+            )
+            city = (
+                sub[COLUMN_CITY].dropna().astype(str).iloc[0]
+                if COLUMN_CITY in sub and not sub[COLUMN_CITY].isna().all()
+                else None
+            )
+            
+            # Date de fin du contrat
+            date_fin_contrat = None
+            if COLUMN_DATE_FIN_CONTRAT in sub.columns and sub[COLUMN_DATE_FIN_CONTRAT].notna().any():
+                date_fin_contrat = sub[COLUMN_DATE_FIN_CONTRAT].dropna().iloc[0].strftime("%d/%m/%Y")
+            
+            colors_present = []
+            if "couleur_norm" in sub.columns:
+                colors_present = (
+                    sub["couleur_norm"]
+                    .dropna()
+                    .astype(str)
+                    .str.lower()
+                    .str.strip()
+                    .replace("", pd.NA)
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
+                colors_present = sorted(colors_present)
+            
+            grouped_printers.append({
+                "serial_display": serial_display,
+                "client": client_name,
+                "contract": contract_no,
+                "city": city,
+                "rows": rows,
+                "min_days_left": min_days_left,
+                "min_stockout_date": min_stockout_date,
+                "min_priority": min_priority,
+                "colors_present": colors_present,
+                "date_fin_contrat": date_fin_contrat,
+            })
+    
+    return render_template(
+        "alertes.html",
+        grouped_printers=grouped_printers,
+        col_id=COLUMN_ID,
+        col_toner=COLUMN_TONER,
+        col_days=COLUMN_DAYS,
+        col_priority=COLUMN_PRIORITY,
+        col_client=COLUMN_CLIENT,
+        col_contract=COLUMN_CONTRACT,
+        col_city=COLUMN_CITY,
+        col_comment=COLUMN_COMMENT,
+        col_stockout=COLUMN_STOCKOUT,
+        col_type_liv=COLUMN_TYPE_LIV,
+        col_last_update=COLUMN_LAST_UPDATE,
+        col_last_pct=COLUMN_LAST_PCT,
+        processed_ids=processed_ids,
+        total_alertes=len(alertes_df),
     )
 
 
@@ -675,9 +1022,14 @@ def printer_detail(serial_display):
     contract_no = sub[COLUMN_CONTRACT].dropna().astype(str).iloc[0] if COLUMN_CONTRACT in sub.columns and not sub[COLUMN_CONTRACT].isna().all() else ""
     city = sub[COLUMN_CITY].dropna().astype(str).iloc[0] if COLUMN_CITY in sub.columns and not sub[COLUMN_CITY].isna().all() else ""
 
-    min_days_left = sub[COLUMN_DAYS].min() if COLUMN_DAYS in sub.columns else None
-    min_stockout_date = sub[COLUMN_STOCKOUT].min() if COLUMN_STOCKOUT in sub.columns else None
-    min_priority = sub[COLUMN_PRIORITY].min() if COLUMN_PRIORITY in sub.columns else None
+    min_days_left = sub[COLUMN_DAYS].min() if COLUMN_DAYS in sub.columns and sub[COLUMN_DAYS].notna().any() else None
+    
+    if COLUMN_STOCKOUT in sub.columns and sub[COLUMN_STOCKOUT].notna().any():
+        min_stockout_date = sub[COLUMN_STOCKOUT].dropna().min()
+    else:
+        min_stockout_date = None
+    
+    min_priority = sub[COLUMN_PRIORITY].min() if COLUMN_PRIORITY in sub.columns and sub[COLUMN_PRIORITY].notna().any() else None
 
     rows = sub.to_dict(orient="records")
 
