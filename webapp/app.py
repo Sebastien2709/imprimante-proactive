@@ -620,6 +620,19 @@ def load_data():
     else:
         df["fallback_p4"] = df["fallback_p4"].fillna(False).astype(bool)
 
+    # colonne alerte_non_prioritaire propre pour tout le DF
+    # (les lignes P4 ajoutées par concat n'ont pas cette colonne → NA → crash au masque)
+    if "alerte_non_prioritaire" not in df.columns:
+        df["alerte_non_prioritaire"] = False
+    else:
+        df["alerte_non_prioritaire"] = df["alerte_non_prioritaire"].fillna(False).astype(bool)
+
+    # même chose pour alerte_contrat_fin_proche
+    if "alerte_contrat_fin_proche" not in df.columns:
+        df["alerte_contrat_fin_proche"] = False
+    else:
+        df["alerte_contrat_fin_proche"] = df["alerte_contrat_fin_proche"].fillna(False).astype(bool)
+
     # recast (securite)
     if COLUMN_PRIORITY in df.columns:
         df[COLUMN_PRIORITY] = pd.to_numeric(df[COLUMN_PRIORITY], errors="coerce").astype("Int64")
@@ -915,9 +928,7 @@ def alertes():
     processed_ids = load_processed_ids()
     
     # Filtrer uniquement les alertes non prioritaires
-    if "alerte_non_prioritaire" not in df.columns:
-        df["alerte_non_prioritaire"] = False
-    
+    # (fillna déjà fait à la fin de load_data → la colonne est un bool pur)
     alertes_df = df[df["alerte_non_prioritaire"]].copy()
     
     # Trier
@@ -932,7 +943,7 @@ def alertes():
     sort_cols.append(COLUMN_SERIAL_DISPLAY)
     
     if sort_cols:
-        alertes_df = alertes_df.sort_values(sort_cols)
+        alertes_df = alertes_df.sort_values(sort_cols, na_position="last")
     
     # Grouper par imprimante
     grouped_printers = []
