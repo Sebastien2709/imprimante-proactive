@@ -113,22 +113,23 @@
           </select>
         </div>
 
-        <!-- Filtre serveur rupture -->
+        <!-- Filtre suivi KPAX -->
         <div class="col-12">
-          <label class="form-label">Rupture (KPAX muet / dernière remontée trop ancienne)</label>
-          <div class="btn-group" role="group" aria-label="Filtre rupture">
+          <label class="form-label">Suivi KPAX</label>
+          <div class="btn-group" role="group" aria-label="Filtre suivi KPAX">
             <input type="radio" class="btn-check" name="rupture_mode" id="rupt_all" value="all"
               {% if rupture_mode == "all" %}checked{% endif %}>
             <label class="btn btn-outline-primary" for="rupt_all">Tout</label>
 
             <input type="radio" class="btn-check" name="rupture_mode" id="rupt_ok" value="ok"
               {% if rupture_mode == "ok" %}checked{% endif %}>
-            <label class="btn btn-outline-primary" for="rupt_ok">OK</label>
+            <label class="btn btn-outline-primary" for="rupt_ok">✅ À jour</label>
 
             <input type="radio" class="btn-check" name="rupture_mode" id="rupt_rupture" value="rupture"
               {% if rupture_mode == "rupture" %}checked{% endif %}>
-            <label class="btn btn-outline-primary" for="rupt_rupture">Rupture ?</label>
+            <label class="btn btn-outline-primary" for="rupt_rupture">⚠️ Pas de données</label>
           </div>
+          <small class="text-muted">KPAX muet depuis plus de 20 jours ou aucune donnée reçue</small>
         </div>
 
         <div class="col-12 d-flex justify-content-end">
@@ -185,7 +186,7 @@
                 {% endif %}
                 {% if printer.min_stockout_date %}
                   <span class="ms-3 text-muted">
-                    Prochaine rupture estimée : <strong>{{ printer.min_stockout_date }}</strong>
+                    Rupture toner la plus proche : <strong>{{ printer.min_stockout_date }}</strong>
                   </span>
                 {% endif %}
                 {% if printer.min_days_left is not none %}
@@ -206,7 +207,7 @@
                 <!-- Boutons rapides par toner (couleur) -->
                 {% if printer.colors_present and printer.colors_present|length > 0 %}
                   <div class="mt-2">
-                    <span class="text-muted me-2">Pente rapide :</span>
+                    <span class="text-muted me-2">Consommation :</span>
                     {% for c in printer.colors_present %}
                       <button
                         type="button"
@@ -243,21 +244,17 @@
                   <thead class="table-light">
                     <tr>
                       <th style="width: 4%">ID</th>
-                      <th style="width: 10%">Toner</th>
-                      <th style="width: 7%">Couleur</th>
-                      <th style="width: 9%">Jours restants</th>
-                      <th style="width: 13%">Date rupture estimée</th>
-                      <th style="width: 8%">Priorité</th>
-                      <th style="width: 10%">Dernière remontée</th>
-                      <th style="width: 8%">Rupture ?</th>
-                      <th style="width: 6%">% actuel</th>
-                      <th style="width: 13%">Client</th>
-                      <th style="width: 8%">Ville</th>
-                      <th style="width: 12%">Type livraison</th>
-                      <th style="width: 15%">Commentaire</th>
-                      <th style="width: 7%">Statut</th>
-                      <th style="width: 10%">Pente</th>
-                      <th style="width: 12%">Action</th>
+                      <th style="width: 12%">Toner</th>
+                      <th style="width: 10%">Jours restants</th>
+                      <th style="width: 14%">Date rupture est.</th>
+                      <th style="width: 9%">Priorité</th>
+                      <th style="width: 11%">Dernière remontée</th>
+                      <th style="width: 10%">Suivi KPAX</th>
+                      <th style="width: 7%">% actuel</th>
+                      <th style="width: 13%">Type livraison</th>
+                      <th style="width: 14%">Commentaire</th>
+                      <th style="width: 10%">Consommation</th>
+                      <th style="width: 16%">Action</th>
                     </tr>
                   </thead>
 
@@ -276,7 +273,6 @@
                       >
                         <td>{{ rid }}</td>
                         <td>{{ r.get(col_toner, '') }}</td>
-                        <td>{{ r.get('couleur', '') }}</td>
                         <td>{{ r.get(col_days, '') }}</td>
                         <td>{{ r.get(col_stockout, '') }}</td>
 
@@ -297,9 +293,9 @@
 
                         <td>
                           {% if is_rupture %}
-                            <span class="badge bg-warning text-dark">Rupture ?</span>
+                            <span class="badge bg-warning text-dark">⚠️ Pas de données</span>
                           {% else %}
-                            <span class="badge bg-success">OK</span>
+                            <span class="badge bg-success text-white">✅ À jour</span>
                           {% endif %}
                         </td>
 
@@ -308,9 +304,6 @@
                             {{ r.get(col_last_pct) | round(0) }}%
                           {% endif %}
                         </td>
-
-                        <td>{{ r.get(col_client, '') }}</td>
-                        <td>{{ r.get(col_city, '') }}</td>
 
                         <td>
                           {% set tl = r.get(col_type_liv, '') %}
@@ -327,15 +320,7 @@
 
                         <td>{{ r.get(col_comment, '') }}</td>
 
-                        <td>
-                          {% if rid in processed_ids %}
-                            ✅ Envoyé
-                          {% else %}
-                            ⏳ À traiter
-                          {% endif %}
-                        </td>
-
-                        <!-- ✅ Bouton pente par toner -->
+                        <!-- Consommation (modal pente) -->
                         <td>
                           {% if color_val %}
                             <button
@@ -346,13 +331,14 @@
                               data-bs-toggle="modal"
                               data-bs-target="#slopeModal"
                             >
-                              Voir
+                              📈 Voir
                             </button>
                           {% else %}
                             <span class="text-muted">—</span>
                           {% endif %}
                         </td>
 
+                        <!-- Action + état en un seul bloc -->
                         <td>
                           {% if rid not in processed_ids %}
                             <form method="post" action="{{ url_for('mark_processed', row_id=rid) }}">
@@ -361,11 +347,14 @@
                               </button>
                             </form>
                           {% else %}
-                            <form method="post" action="{{ url_for('mark_unprocessed', row_id=rid) }}">
-                              <button type="submit" class="btn btn-sm btn-outline-warning">
-                                Annuler
-                              </button>
-                            </form>
+                            <div class="d-flex align-items-center gap-2">
+                              <span class="badge bg-success text-white">✅ Envoyé</span>
+                              <form method="post" action="{{ url_for('mark_unprocessed', row_id=rid) }}">
+                                <button type="submit" class="btn btn-sm btn-outline-warning">
+                                  Annuler
+                                </button>
+                              </form>
+                            </div>
                           {% endif %}
                         </td>
                       </tr>

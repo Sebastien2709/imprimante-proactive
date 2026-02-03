@@ -129,7 +129,6 @@
                 <thead class="table-light">
                   <tr>
                     <th>Toner</th>
-                    <th>Couleur</th>
                     <th>% actuel</th>
                     <th>Jours restants</th>
                     <th>Date rupture est.</th>
@@ -141,7 +140,6 @@
                   {% for row in printer.rows %}
                     <tr>
                       <td>{{ row.get(col_toner, "") }}</td>
-                      <td>{{ row.get("couleur", "") }}</td>
                       <td>
                         {% if row.get(col_last_pct) is not none %}
                           {{ row.get(col_last_pct) | round(0) | int }}%

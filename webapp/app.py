@@ -123,6 +123,8 @@ KPAX_STALE_DAYS = 20
 _SLOPES_MAP = None
 _KPAX_LAST_STATES = None
 _KPAX_HISTORY_LONG = None
+_DATA_CACHE = None          # (mtime, DataFrame)
+_CONTRACT_CACHE = None      # (mtime, DataFrame)
 
 
 # ============================================================
@@ -235,36 +237,49 @@ def get_slopes_map():
 # STATUTS DE CONTRATS (ItemLedgEntries)
 # ============================================================
 
-def load_contract_statuses():
-    """
-    Charge les statuts de contrats depuis contract_status.parquet
-    (généré par src/data/load_contract_status.py)
-    
-    Colonnes attendues : serial_display, statut_contrat, date_fin_contrat
-    """
+def _load_contract_statuses_from_disk():
+    """Lecture brute du parquet — appelée une seule fois puis cachée."""
     contracts_path = BASE_DIR / "data" / "processed" / "contract_status.parquet"
-    
+
     if not contracts_path.exists():
         print(f"[CONTRATS] Fichier introuvable : {contracts_path}")
         print("[CONTRATS] Exécutez d'abord : python src/data/load_contract_status.py")
         return pd.DataFrame(columns=["serial_display", COLUMN_STATUT_CONTRAT, COLUMN_DATE_FIN_CONTRAT])
-    
+
     try:
-        print(f"[CONTRATS] Lecture : {contracts_path}")
+        print(f"[CONTRATS] Lecture disque : {contracts_path}")
         df = pd.read_parquet(contracts_path)
-        
-        # Renommer si besoin
+
         if "statut_contrat" in df.columns and COLUMN_STATUT_CONTRAT not in df.columns:
             df = df.rename(columns={"statut_contrat": COLUMN_STATUT_CONTRAT})
         if "date_fin_contrat" in df.columns and COLUMN_DATE_FIN_CONTRAT not in df.columns:
             df = df.rename(columns={"date_fin_contrat": COLUMN_DATE_FIN_CONTRAT})
-        
+
         print(f"[CONTRATS] {len(df)} contrats chargés")
         return df
-        
     except Exception as e:
         print(f"[CONTRATS] Erreur lors du chargement : {e}")
         return pd.DataFrame(columns=["serial_display", COLUMN_STATUT_CONTRAT, COLUMN_DATE_FIN_CONTRAT])
+
+
+def load_contract_statuses():
+    """Cache par mtime — ne relit le parquet que si le fichier a changé."""
+    global _CONTRACT_CACHE
+    contracts_path = BASE_DIR / "data" / "processed" / "contract_status.parquet"
+
+    if contracts_path.exists():
+        mtime = contracts_path.stat().st_mtime
+    else:
+        mtime = 0
+
+    if _CONTRACT_CACHE is not None:
+        cached_mtime, cached_df = _CONTRACT_CACHE
+        if cached_mtime == mtime:
+            return cached_df.copy()
+
+    df = _load_contract_statuses_from_disk()
+    _CONTRACT_CACHE = (mtime, df)
+    return df.copy()
 
 
 # ============================================================
@@ -396,7 +411,7 @@ def compute_slope_pct_per_day(dates: pd.Series, pcts: pd.Series):
 # CHARGEMENT CSV BUSINESS + MERGE KPAX (CSV léger)
 # ============================================================
 
-def load_data():
+def _load_data_from_disk():
     print("[DATA] Lecture :", DATA_PATH)
     df = pd.read_csv(DATA_PATH, sep=";")
 
@@ -531,6 +546,17 @@ def load_data():
             )
         )
 
+        # Pré-compiler un dict serial → (client, contrat, ville, type_liv)
+        # pour éviter de filtrer le DF à chaque itération
+        _serial_info = {}
+        for serial_val, grp in df.groupby(COLUMN_SERIAL_DISPLAY):
+            _serial_info[str(serial_val).strip()] = {
+                "client": str(grp[COLUMN_CLIENT].dropna().iloc[0]) if COLUMN_CLIENT in grp.columns and not grp[COLUMN_CLIENT].isna().all() else "",
+                "contract": str(grp[COLUMN_CONTRACT].dropna().iloc[0]) if COLUMN_CONTRACT in grp.columns and not grp[COLUMN_CONTRACT].isna().all() else "",
+                "city": str(grp[COLUMN_CITY].dropna().iloc[0]) if COLUMN_CITY in grp.columns and not grp[COLUMN_CITY].isna().all() else "",
+                "type_liv": str(grp[COLUMN_TYPE_LIV].dropna().iloc[0]) if COLUMN_TYPE_LIV in grp.columns and not grp[COLUMN_TYPE_LIV].isna().all() else "",
+            }
+
         low = kpax_last.copy()
         low["serial_display"] = low["serial_display"].astype(str).str.strip()
         low["color"] = low["color"].astype(str).str.lower().str.strip()
@@ -547,21 +573,12 @@ def load_data():
                 if (s, c) in existing_pairs:
                     continue
 
-                # recup infos client/contrat/ville/type_livraison depuis une autre ligne de cette imprimante si dispo
-                sub_s = df[df[COLUMN_SERIAL_DISPLAY].astype(str).str.strip() == s]
-                client_name = ""
-                contract_no = ""
-                city = ""
-                type_liv = ""
-                if not sub_s.empty:
-                    if COLUMN_CLIENT in sub_s.columns and not sub_s[COLUMN_CLIENT].isna().all():
-                        client_name = str(sub_s[COLUMN_CLIENT].dropna().astype(str).iloc[0])
-                    if COLUMN_CONTRACT in sub_s.columns and not sub_s[COLUMN_CONTRACT].isna().all():
-                        contract_no = str(sub_s[COLUMN_CONTRACT].dropna().astype(str).iloc[0])
-                    if COLUMN_CITY in sub_s.columns and not sub_s[COLUMN_CITY].isna().all():
-                        city = str(sub_s[COLUMN_CITY].dropna().astype(str).iloc[0])
-                    if COLUMN_TYPE_LIV in sub_s.columns and not sub_s[COLUMN_TYPE_LIV].isna().all():
-                        type_liv = str(sub_s[COLUMN_TYPE_LIV].dropna().astype(str).iloc[0])
+                # lookup O(1) au lieu de df[df[...]==s]
+                info = _serial_info.get(s, {})
+                client_name = info.get("client", "")
+                contract_no = info.get("contract", "")
+                city = info.get("city", "")
+                type_liv = info.get("type_liv", "")
 
                 # Si pas de contrat => on ignore (pas de P4)
                 if not contract_no or contract_no.strip() == "":
@@ -620,19 +637,6 @@ def load_data():
     else:
         df["fallback_p4"] = df["fallback_p4"].fillna(False).astype(bool)
 
-    # colonne alerte_non_prioritaire propre pour tout le DF
-    # (les lignes P4 ajoutées par concat n'ont pas cette colonne → NA → crash au masque)
-    if "alerte_non_prioritaire" not in df.columns:
-        df["alerte_non_prioritaire"] = False
-    else:
-        df["alerte_non_prioritaire"] = df["alerte_non_prioritaire"].fillna(False).astype(bool)
-
-    # même chose pour alerte_contrat_fin_proche
-    if "alerte_contrat_fin_proche" not in df.columns:
-        df["alerte_contrat_fin_proche"] = False
-    else:
-        df["alerte_contrat_fin_proche"] = df["alerte_contrat_fin_proche"].fillna(False).astype(bool)
-
     # recast (securite)
     if COLUMN_PRIORITY in df.columns:
         df[COLUMN_PRIORITY] = pd.to_numeric(df[COLUMN_PRIORITY], errors="coerce").astype("Int64")
@@ -641,6 +645,30 @@ def load_data():
 
     return df
 
+
+def get_data():
+    """
+    Cache de load_data() par mtime du fichier CSV source.
+    Tant que le fichier n'a pas changé sur disque, on retourne
+    une copie du DataFrame déjà calculé — pas de re-lecture, pas de re-merge.
+    """
+    global _DATA_CACHE
+
+    if DATA_PATH.exists():
+        mtime = DATA_PATH.stat().st_mtime
+    else:
+        mtime = 0
+
+    if _DATA_CACHE is not None:
+        cached_mtime, cached_df = _DATA_CACHE
+        if cached_mtime == mtime:
+            print("[DATA] Cache hit (mtime inchangé)")
+            return cached_df.copy()
+
+    print("[DATA] Cache miss → rechargement complet")
+    df = _load_data_from_disk()
+    _DATA_CACHE = (mtime, df)
+    return df.copy()
 
 
 # ============================================================
@@ -736,7 +764,7 @@ def api_printer_history():
 
 @app.route("/", methods=["GET"])
 def index():
-    df = load_data()
+    df = get_data()
     processed_ids = load_processed_ids()
 
     serial_query = request.args.get("serial_query", "").strip()
@@ -924,11 +952,13 @@ def index():
 @app.route("/alertes", methods=["GET"])
 def alertes():
     """Page dédiée aux alertes non prioritaires (contrats annulés avec date)"""
-    df = load_data()
+    df = get_data()
     processed_ids = load_processed_ids()
     
     # Filtrer uniquement les alertes non prioritaires
-    # (fillna déjà fait à la fin de load_data → la colonne est un bool pur)
+    if "alerte_non_prioritaire" not in df.columns:
+        df["alerte_non_prioritaire"] = False
+    
     alertes_df = df[df["alerte_non_prioritaire"]].copy()
     
     # Trier
@@ -1033,7 +1063,7 @@ def alertes():
 def printer_detail(serial_display):
     serial_display = (serial_display or "").strip()
 
-    df = load_data()
+    df = get_data()
     sub = df[df[COLUMN_SERIAL_DISPLAY].astype(str) == serial_display].copy()
     if sub.empty:
         abort(404)
