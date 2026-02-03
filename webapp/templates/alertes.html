@@ -2,184 +2,399 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <title>⚠️ Alertes – Contrats annulés</title>
+  <title>⚠️ Alertes — Contrats annulés</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-  >
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
   <style>
-    body { background-color: #f5f5f7; }
-
-    /* ── header ── */
-    .app-header {
-      background: linear-gradient(135deg, #dc3545, #fd7e14);
-      color: white;
-      border-radius: 1rem;
+    :root {
+      --bg:          #0f1117;
+      --surface:     #161820;
+      --surface2:    #1e2028;
+      --border:      #2a2d35;
+      --text:        #e2e4e9;
+      --text-muted:  #7a7f8e;
+      --accent:      #6c63ff;
+      --red:         #ef4444;
+      --orange:      #f59e0b;
+      --green:       #22c55e;
+      --prio1:       #ef4444;
+      --prio2:       #f59e0b;
+      --prio3:       #eab308;
+      --prio4:       #22c55e;
+    }
+    /* ============================================================
+       LIGHT OVERRIDE
+       ============================================================ */
+    html.light {
+      --bg:          #f0f2f5;
+      --surface:     #ffffff;
+      --surface2:    #f4f6f9;
+      --border:      #dde1e7;
+      --text:        #1e2028;
+      --text-muted:  #6b7280;
+      --accent:      #5b52e5;
+      --red:         #dc2626;
+      --orange:      #d97706;
+      --green:       #16a34a;
+      --prio1:       #dc2626;
+      --prio2:       #d97706;
+      --prio3:       #ca8a04;
+      --prio4:       #16a34a;
     }
 
-    /* ── carte imprimante ── */
-    .printer-card {
-      border-radius: 1rem;
-      border: 2px solid #dc3545;
-      background-color: #fff5f5;
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      margin: 0;
+      transition: background .3s, color .3s;
     }
 
-    /* ── badges priorité (même palette que index.html) ── */
-    .badge-prio-1 { background-color: #dc3545; color: #fff; }
-    .badge-prio-2 { background-color: #fd7e14; color: #fff; }
-    .badge-prio-3 { background-color: #ffc107; color: #212529; }
-    .badge-prio-4 { background-color: #198754; color: #fff; }
+    /* ---- TOP BAR ---- */
+    .top-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .top-bar .logo {
+      font-family: 'DM Mono', monospace;
+      font-weight: 500;
+      font-size: 1rem;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+    .top-bar .logo span { color: var(--text-muted); }
 
-    /* ── badge "Contrat annulé" ── */
-    .badge-annule {
-      background-color: #dc3545;
-      color: #fff;
+    .btn-back {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 8px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.8rem;
+      text-decoration: none;
       font-weight: 600;
+      transition: all 0.15s;
     }
+    .btn-back:hover { border-color: var(--accent); color: var(--text); text-decoration:none; }
 
-    /* ── chips du header ── */
-    .chip {
+    /* ---- MAIN ---- */
+    .main-wrap { max-width: 1200px; margin: 0 auto; padding: 1.75rem 1.5rem; }
+
+    /* ---- PAGE HEADER ---- */
+    .page-header {
+      background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05));
+      border: 1px solid rgba(239,68,68,0.25);
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .page-header h1 { margin:0; font-size:1.25rem; font-weight:700; color: var(--text); }
+    .page-header p  { margin:0.25rem 0 0; font-size:0.82rem; color: var(--text-muted); max-width:520px; }
+
+    .stat-chips { display:flex; gap:0.6rem; flex-wrap:wrap; }
+    .stat-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .stat-chip .label { color: var(--text-muted); }
+    .stat-chip .val   { font-weight: 600; color: var(--text); }
+
+    /* ---- PRINTER CARD ---- */
+    .printer-card {
+      background: var(--surface);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 12px;
+      margin-bottom: 1rem;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .printer-card:hover { border-color: var(--red); }
+
+    .pc-header {
+      padding: 0.85rem 1.1rem 0.6rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .pc-serial {
+      font-family: 'DM Mono', monospace;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .pc-serial .icon { font-size: 0.95rem; }
+
+    .pc-meta { display:flex; flex-wrap:wrap; gap:0.9rem; margin-top:0.3rem; }
+    .pc-meta span { font-size:0.79rem; color:var(--text-muted); }
+    .pc-meta strong { color:var(--text); font-weight:600; }
+
+    /* Badge "Contrat annulé" */
+    .badge-annule {
       display: inline-flex;
       align-items: center;
-      padding: 0.25rem 0.65rem;
-      border-radius: 999px;
-      font-size: 0.8rem;
-      background-color: rgba(255,255,255,0.15);
-      color: #f8f9fa;
-      margin-right: 0.5rem;
+      gap: 0.3rem;
+      background: rgba(239,68,68,0.14);
+      border: 1px solid rgba(239,68,68,0.35);
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--red);
+      margin-top: 0.4rem;
     }
-    .chip span { font-weight: 600; margin-right: 0.25rem; }
+
+    /* Prio badge */
+    .badge-prio { display:inline-block; border-radius:6px; padding:0.15rem 0.55rem; font-size:0.75rem; font-weight:700; color:#fff; }
+    .badge-prio-1 { background:var(--prio1); }
+    .badge-prio-2 { background:var(--prio2); }
+    .badge-prio-3 { background:var(--prio3); color:#1a1a1a; }
+    .badge-prio-4 { background:var(--prio4); }
+
+    /* Détails link */
+    .btn-detail {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.75rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .btn-detail:hover { background:var(--accent); color:#fff; text-decoration:none; }
+
+    /* ---- TABLE ---- */
+    .pc-table-wrap { border-top: 1px solid var(--border); overflow-x: auto; }
+    table.toner-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+    table.toner-table th {
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    table.toner-table td {
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    table.toner-table tr:last-child td { border-bottom: none; }
+    table.toner-table tr:hover td { background: rgba(108,99,255,0.04); }
+
+    /* ---- EMPTY / SUCCESS ---- */
+    .success-state {
+      background: rgba(34,197,94,0.08);
+      border: 1px solid rgba(34,197,94,0.25);
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+      color: var(--green);
+      font-weight: 600;
+    }
+    .success-state .icon { font-size: 2rem; margin-bottom: 0.4rem; }
+
+    /* ============================================================
+       THEME TOGGLE PILL
+       ============================================================ */
+    .theme-toggle {
+      display: flex;
+      align-items: center;
+      width: 48px; height: 26px;
+      border-radius: 13px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      cursor: pointer;
+      padding: 0 2px;
+      transition: background .3s, border-color .3s;
+    }
+    .theme-toggle:hover { border-color: var(--accent); }
+    .theme-toggle .knob {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; line-height: 1;
+      box-shadow: 0 1px 4px rgba(0,0,0,.25);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+    }
+    html.light .theme-toggle .knob { transform: translateX(22px); }
+
+    /* top-bar right group (toggle + back btn) */
+    .top-bar-right { display: flex; align-items: center; gap: 0.6rem; }
+
+    ::-webkit-scrollbar { width:6px; height:6px; }
+    ::-webkit-scrollbar-track { background:var(--bg); }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </style>
 </head>
 
 <body>
-  <div class="container py-4">
 
-    <!-- ── HEADER ── -->
-    <div class="app-header p-4 mb-4 shadow">
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-          <h1 class="h3 mb-1">⚠️ Alertes – Contrats annulés</h1>
-          <p class="mb-0 opacity-75">
-            Imprimantes dont le contrat est annulé mais avec une date de fin prévue.
-            Les recommandations de toners sont masquées sur l'accueil ; elles sont regroupées ici.
-          </p>
-        </div>
-        <div class="text-end">
-          <div class="chip"><span>Recommandations</span> {{ total_alertes }}</div>
-          <div class="chip"><span>Imprimantes</span> {{ grouped_printers | length }}</div>
-          <a href="/" class="btn btn-light btn-sm ms-2">← Retour à l'accueil</a>
-        </div>
-      </div>
+<!-- TOP BAR -->
+<nav class="top-bar">
+  <div class="logo">toner<span>.</span>ai <span style="color:var(--text-muted); font-family:'DM Sans',sans-serif; font-weight:500; font-size:0.82rem;">— Alertes</span></div>
+  <div class="top-bar-right">
+    <button class="theme-toggle" id="themeToggle" aria-label="Basculer thème">
+      <span class="knob" id="themeIcon">🌙</span>
+    </button>
+    <a href="/" class="btn-back">← Retour à l'accueil</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main-wrap">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div>
+      <h1>⚠️ Alertes — Contrats annulés</h1>
+      <p>Imprimantes dont le contrat est annulé mais avec une date de fin prévue. Les recommandations de toners sont masquées sur l'accueil ; elles sont regroupées ici.</p>
     </div>
+    <div class="stat-chips">
+      <div class="stat-chip"><span class="label">Recommandations</span><span class="val">{{ total_alertes }}</span></div>
+      <div class="stat-chip"><span class="label">Imprimantes</span><span class="val">{{ grouped_printers | length }}</span></div>
+    </div>
+  </div>
 
-    <!-- ── LISTE DES IMPRIMANTES ── -->
-    {% if grouped_printers %}
-      {% for printer in grouped_printers %}
-        <div class="card printer-card shadow-sm mb-3">
-          <div class="card-body">
+  <!-- PRINTER LIST -->
+  {% if grouped_printers %}
+    {% for printer in grouped_printers %}
+    <div class="printer-card">
 
-            <!-- en-tête carte -->
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-              <div>
-                <!-- serial → lien vers la page détail -->
-                <h5 class="mb-1">
-                  <a href="/printer/{{ printer.serial_display }}" class="text-decoration-none text-dark">
-                    🖨️ {{ printer.serial_display }}
-                  </a>
-                </h5>
+      <!-- HEADER -->
+      <div class="pc-header">
+        <div>
+          <div class="pc-serial">
+            <span class="icon">🖨️</span>
+            <a href="/printer/{{ printer.serial_display }}" style="color:var(--text);text-decoration:none;font-weight:600;">{{ printer.serial_display }}</a>
+            <a href="/printer/{{ printer.serial_display }}" class="btn-detail">Détails →</a>
+          </div>
 
-                <!-- client / ville / contrat -->
-                <div class="text-muted small">
-                  {% if printer.client %}
-                    <span><strong>Client :</strong> {{ printer.client }}</span>
-                  {% endif %}
-                  {% if printer.city %}
-                    <span class="ms-3"><strong>Ville :</strong> {{ printer.city }}</span>
-                  {% endif %}
-                  {% if printer.contract %}
-                    <span class="ms-3"><strong>Contrat :</strong> {{ printer.contract }}</span>
-                  {% endif %}
-                </div>
+          <div class="pc-meta">
+            {% if printer.client %}  <span><strong>Client</strong> {{ printer.client }}</span>{% endif %}
+            {% if printer.city %}    <span><strong>Ville</strong> {{ printer.city }}</span>{% endif %}
+            {% if printer.contract %}<span><strong>Contrat</strong> {{ printer.contract }}</span>{% endif %}
+          </div>
 
-                <!-- badge "Contrat annulé – fin prévue le …" -->
-                {% if printer.date_fin_contrat %}
-                  <div class="mt-2">
-                    <span class="badge badge-annule">
-                      ⚠️ Contrat annulé – fin prévue le {{ printer.date_fin_contrat }}
-                    </span>
-                  </div>
-                {% endif %}
-              </div>
+          {% if printer.date_fin_contrat %}
+            <div class="badge-annule">⚠️ Contrat annulé — fin prévue le {{ printer.date_fin_contrat }}</div>
+          {% endif %}
+        </div>
 
-              <!-- priorité min de cette imprimante -->
-              <div class="text-end">
-                {% if printer.min_priority is not none %}
-                  <span class="badge badge-prio-{{ printer.min_priority }}">
-                    P{{ printer.min_priority }}
-                  </span>
-                {% endif %}
-              </div>
-            </div>
-
-            <!-- ── TABLEAU TONERS ── -->
-            <div class="table-responsive">
-              <table class="table table-sm table-hover align-middle mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th>Toner</th>
-                    <th>% actuel</th>
-                    <th>Jours restants</th>
-                    <th>Date rupture est.</th>
-                    <th>Priorité</th>
-                    <th>Commentaire</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in printer.rows %}
-                    <tr>
-                      <td>{{ row.get(col_toner, "") }}</td>
-                      <td>
-                        {% if row.get(col_last_pct) is not none %}
-                          {{ row.get(col_last_pct) | round(0) | int }}%
-                        {% else %}
-                          –
-                        {% endif %}
-                      </td>
-                      <td>
-                        {% if row.get(col_days) is not none and row.get(col_days) == row.get(col_days) %}
-                          {{ row.get(col_days) | int }}
-                        {% else %}
-                          –
-                        {% endif %}
-                      </td>
-                      <td>{{ row.get(col_stockout, "–") }}</td>
-                      <td>
-                        {% if row.get(col_priority) is not none %}
-                          <span class="badge badge-prio-{{ row.get(col_priority) | int }}">
-                            P{{ row.get(col_priority) | int }}
-                          </span>
-                        {% endif %}
-                      </td>
-                      <td>{{ row.get(col_comment, "") }}</td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-
-          </div><!-- /card-body -->
-        </div><!-- /card -->
-      {% endfor %}
-
-    {% else %}
-      <!-- aucune alerte -->
-      <div class="alert alert-success">
-        <strong>✅ Aucune alerte</strong> – tous les contrats sont actifs ou sans date de fin prévue.
+        <!-- Priority badge -->
+        <div>
+          {% if printer.min_priority is not none %}
+            <span class="badge-prio badge-prio-{{ printer.min_priority }}">P{{ printer.min_priority }}</span>
+          {% endif %}
+        </div>
       </div>
-    {% endif %}
 
-  </div><!-- /container -->
+      <!-- TABLE -->
+      <div class="pc-table-wrap">
+        <table class="toner-table">
+          <thead>
+            <tr>
+              <th>Toner</th>
+              <th>% actuel</th>
+              <th>Jours restants</th>
+              <th>Date rupture est.</th>
+              <th>Priorité</th>
+              <th>Commentaire</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in printer.rows %}
+              <tr>
+                <td><strong>{{ row.get(col_toner, "") }}</strong></td>
+                <td>
+                  {% if row.get(col_last_pct) is not none %}
+                    {{ row.get(col_last_pct) | round(0) | int }}%
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  {% if row.get(col_days) is not none and row.get(col_days) == row.get(col_days) %}
+                    {{ row.get(col_days) | int }}
+                  {% else %}—{% endif %}
+                </td>
+                <td>{{ row.get(col_stockout, "—") }}</td>
+                <td>
+                  {% if row.get(col_priority) is not none %}
+                    <span class="badge-prio badge-prio-{{ row.get(col_priority) | int }}">P{{ row.get(col_priority) | int }}</span>
+                  {% endif %}
+                </td>
+                <td style="color:var(--text-muted);">{{ row.get(col_comment, "") }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div><!-- /printer-card -->
+    {% endfor %}
+
+  {% else %}
+    <div class="success-state">
+      <div class="icon">✅</div>
+      Aucune alerte — tous les contrats sont actifs ou sans date de fin prévue.
+    </div>
+  {% endif %}
+
+</div><!-- /main-wrap -->
+<!-- ============================================================
+     THEME TOGGLE JS (same localStorage key as index)
+     ============================================================ -->
+<script>
+  (function(){
+    const KEY  = 'tonerai-theme';
+    const html = document.documentElement;
+    const btn  = document.getElementById('themeToggle');
+    const icon = document.getElementById('themeIcon');
+
+    function apply(t) {
+      if (t === 'light') { html.classList.add('light');    icon.textContent = '☀️'; }
+      else               { html.classList.remove('light'); icon.textContent = '🌙'; }
+    }
+    // init before first paint
+    apply(localStorage.getItem(KEY) || 'dark');
+
+    btn.addEventListener('click', () => {
+      const next = html.classList.contains('light') ? 'dark' : 'light';
+      apply(next);
+      localStorage.setItem(KEY, next);
+    });
+  })();
+</script>
+
 </body>
 </html>

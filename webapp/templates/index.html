@@ -1,645 +1,1116 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="utf-8">
-    <title>Recommandations de toners (IA Adexgroup)</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    >
-    <style>
-      body { background-color: #f5f5f7; }
-      .app-header {
-        background: linear-gradient(135deg, #0d6efd, #6610f2);
-        color: white;
-        border-radius: 1rem;
-      }
-      .printer-card {
-        border-radius: 1rem;
-        border: 1px solid #e0e0e0;
-      }
-      .badge-prio-1 { background-color: #dc3545; }
-      .badge-prio-2 { background-color: #fd7e14; }
-      .badge-prio-3 { background-color: #ffc107; color: #212529; }
-      .badge-prio-4 { background-color: #198754; }
+<head>
+  <meta charset="utf-8">
+  <title>Recommandations de toners — Adexgroup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-      .chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 0.25rem 0.65rem;
-        border-radius: 999px;
-        font-size: 0.8rem;
-        background-color: rgba(255, 255, 255, 0.15);
-        color: #f8f9fa;
-        margin-right: 0.5rem;
-      }
-      .chip span { font-weight: 600; margin-right: 0.25rem; }
+  <style>
+    /* ============================================================
+       TOKENS & RESET
+       ============================================================ */
+    :root {
+      --bg:          #0f1117;
+      --surface:     #161820;
+      --surface2:    #1e2028;
+      --border:      #2a2d35;
+      --text:        #e2e4e9;
+      --text-muted:  #7a7f8e;
+      --accent:      #6c63ff;
+      --accent-hover:#7f78ff;
+      --red:         #ef4444;
+      --orange:      #f59e0b;
+      --green:       #22c55e;
+      --cyan:        #06b6d4;
+      --prio1:       #ef4444;
+      --prio2:       #f59e0b;
+      --prio3:       #eab308;
+      --prio4:       #22c55e;
+    }
 
-      .badge-type { font-size: 0.75rem; }
-      .badge-type-contrat { background-color: #0d6efd; }
-      .badge-type-commande { background-color: #6c757d; }
-      .badge-type-stock { background-color: #0dcaf0; color: #212529; }
-      .badge-type-inconnu { background-color: #adb5bd; }
+    /* ============================================================
+       LIGHT OVERRIDE
+       ============================================================ */
+    html.light {
+      --bg:          #f0f2f5;
+      --surface:     #ffffff;
+      --surface2:    #f4f6f9;
+      --border:      #dde1e7;
+      --text:        #1e2028;
+      --text-muted:  #6b7280;
+      --accent:      #5b52e5;
+      --accent-hover:#4a43d4;
+      --red:         #dc2626;
+      --orange:      #d97706;
+      --green:       #16a34a;
+      --cyan:        #0891b2;
+      --prio1:       #dc2626;
+      --prio2:       #d97706;
+      --prio3:       #ca8a04;
+      --prio4:       #16a34a;
+    }
 
-      .btn-toner { margin-left: .35rem; margin-top: .15rem; }
-      .slope-pill { font-size: .85rem; }
-    </style>
-  </head>
+    *, *::before, *::after { box-sizing: border-box; }
 
-  <body>
-    <div class="container py-4">
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      margin: 0;
+      transition: background .3s, color .3s;
+    }
 
-      <!-- Bandeau haut -->
-      <div class="app-header p-4 mb-4 shadow-sm">
-        <div class="d-flex justify-content-between align-items-center flex-wrap">
-          <div class="mb-2">
-            <h1 class="h3 mb-1">Recommandations de toners (IA Adexgroup)</h1>
-            <p class="mb-0 opacity-75">
-              Liste des toners à envoyer, calculée automatiquement à partir des données KPAX + contrats (modèle V2.1).
-            </p>
-          </div>
-          <div class="text-end">
-            {% if nb_alertes_non_prioritaires > 0 %}
-              <a href="/alertes" class="btn btn-danger btn-sm mb-2">
-                ⚠️ Alertes non prioritaires ({{ nb_alertes_non_prioritaires }})
-              </a>
-              <br>
-            {% endif %}
-            <div class="chip"><span>Total</span> {{ total_rows }}</div>
-            <div class="chip"><span>À traiter</span> {{ pending_rows }}</div>
-            <div class="chip"><span>Envoyés</span> {{ sent_rows }}</div>
-          </div>
-        </div>
+    /* ============================================================
+       TOP HEADER BAR
+       ============================================================ */
+    .top-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .top-bar .logo {
+      font-family: 'DM Mono', monospace;
+      font-weight: 500;
+      font-size: 1rem;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+    .top-bar .logo span { color: var(--text-muted); }
+
+    .stat-chips {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .stat-chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .stat-chip .label { color: var(--text-muted); }
+    .stat-chip .val   { font-weight: 600; color: var(--text); }
+
+    /* Alertes CTA — always visible */
+    .btn-alertes {
+      background: var(--red);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: background 0.15s;
+    }
+    .btn-alertes:hover { background: #dc2626; color:#fff; text-decoration:none; }
+    .btn-alertes .badge-count {
+      background: rgba(255,255,255,0.25);
+      border-radius: 999px;
+      padding: 0.05rem 0.45rem;
+      font-size: 0.75rem;
+    }
+
+    /* ============================================================
+       MAIN LAYOUT
+       ============================================================ */
+    .main-wrap {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 1.75rem 1.5rem;
+    }
+
+    /* ============================================================
+       SECTION TITLE
+       ============================================================ */
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      margin-bottom: 0.35rem;
+    }
+    .section-head h2 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .section-head .sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* ============================================================
+       FILTER BAR
+       ============================================================ */
+    .filter-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .filter-bar .form-label {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.25rem;
+    }
+    .filter-bar .form-control,
+    .filter-bar .form-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.65rem;
+    }
+    .filter-bar .form-control:focus,
+    .filter-bar .form-select:focus {
+      background: var(--surface2);
+      border-color: var(--accent);
+      color: var(--text);
+      box-shadow: 0 0 0 2px rgba(108,99,255,0.25);
+    }
+    .filter-bar .form-select option { background: var(--surface2); color: var(--text); }
+
+    /* radio group "Suivi KPAX" */
+    .kpax-group {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .kpax-group input[type=radio] { display: none; }
+    .kpax-group label {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .kpax-group input[type=radio]:checked + label {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .kpax-group label:hover { border-color: var(--accent); color: var(--text); }
+
+    .filter-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      margin-top: 0.75rem;
+    }
+    .btn-filter {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.35rem 1rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-filter:hover { background: var(--accent-hover); }
+    .btn-reset {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.35rem 1rem;
+      font-size: 0.82rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.15s;
+    }
+    .btn-reset:hover { border-color: var(--accent); color: var(--text); text-decoration:none; }
+
+    /* ============================================================
+       CHARTS ROW
+       ============================================================ */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    @media (max-width: 640px) { .charts-row { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+    }
+    .chart-card h4 {
+      margin: 0 0 0.75rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ============================================================
+       PRINTER CARDS
+       ============================================================ */
+    .printer-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 1rem;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .printer-card:hover { border-color: var(--accent); }
+
+    /* Card header */
+    .pc-header {
+      padding: 0.85rem 1.1rem 0.6rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .pc-serial {
+      font-family: 'DM Mono', monospace;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .pc-serial .icon { font-size: 0.95rem; }
+
+    .pc-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.9rem;
+      margin-top: 0.3rem;
+    }
+    .pc-meta span {
+      font-size: 0.79rem;
+      color: var(--text-muted);
+    }
+    .pc-meta strong { color: var(--text); font-weight: 600; }
+
+    .pc-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.45rem;
+    }
+
+    /* Prio badge */
+    .badge-prio {
+      display: inline-block;
+      border-radius: 6px;
+      padding: 0.15rem 0.55rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: #fff;
+    }
+    .badge-prio-1 { background: var(--prio1); }
+    .badge-prio-2 { background: var(--prio2); }
+    .badge-prio-3 { background: var(--prio3); color:#1a1a1a; }
+    .badge-prio-4 { background: var(--prio4); }
+
+    /* Type-livraison badge */
+    .badge-type {
+      display: inline-block;
+      border-radius: 6px;
+      padding: 0.12rem 0.5rem;
+      font-size: 0.73rem;
+      font-weight: 600;
+    }
+    .badge-type-contrat   { background: rgba(108,99,255,0.18); color: var(--accent); }
+    .badge-type-commande  { background: rgba(124,139,161,0.2); color: #9ba7b8; }
+    .badge-type-stock     { background: rgba(6,182,212,0.18);  color: var(--cyan); }
+    .badge-type-inconnu   { background: rgba(124,139,161,0.15); color: #7a7f8e; }
+
+    /* KPAX status badge */
+    .badge-kpax-ok   { background: rgba(34,197,94,0.15);  color: var(--green); }
+    .badge-kpax-warn { background: rgba(245,158,11,0.15); color: var(--orange); }
+
+    /* Slope pills row */
+    .slopes-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.4rem;
+    }
+    .slope-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.12rem 0.5rem;
+      font-size: 0.73rem;
+      font-family: 'DM Mono', monospace;
+      color: var(--text-muted);
+    }
+    .slope-pill strong { color: var(--text); }
+
+    /* Toner quick-buttons */
+    .toner-btns { display:flex; gap:0.3rem; flex-wrap:wrap; margin-top:0.4rem; }
+    .btn-toner-quick {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.15rem 0.55rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-toner-quick:hover { border-color: var(--accent); color: var(--text); }
+
+    /* Détails link */
+    .btn-detail {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.75rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .btn-detail:hover { background: var(--accent); color:#fff; text-decoration:none; }
+
+    /* Alerte contrat fin proche */
+    .alert-fin-proche {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: rgba(245,158,11,0.12);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 6px;
+      padding: 0.18rem 0.55rem;
+      font-size: 0.75rem;
+      color: var(--orange);
+      margin-top: 0.35rem;
+    }
+
+    /* ============================================================
+       TABLE INSIDE CARD
+       ============================================================ */
+    .pc-table-wrap {
+      border-top: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    table.toner-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    table.toner-table th {
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    table.toner-table td {
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    table.toner-table tr:last-child td { border-bottom: none; }
+    table.toner-table tr:hover td { background: rgba(108,99,255,0.04); }
+
+    /* Row sent (processed) */
+    table.toner-table tr.row-sent td { opacity: 0.55; }
+    table.toner-table tr.row-sent { background: rgba(34,197,94,0.06); }
+
+    /* Action buttons in table */
+    .btn-mark {
+      background: transparent;
+      border: 1px solid var(--green);
+      color: var(--green);
+      border-radius: 6px;
+      padding: 0.18rem 0.6rem;
+      font-size: 0.73rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-mark:hover { background: var(--green); color: #fff; }
+
+    .btn-unmark {
+      background: transparent;
+      border: 1px solid var(--orange);
+      color: var(--orange);
+      border-radius: 6px;
+      padding: 0.18rem 0.6rem;
+      font-size: 0.73rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-unmark:hover { background: var(--orange); color: #fff; }
+
+    .badge-sent {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      background: rgba(34,197,94,0.15);
+      color: var(--green);
+      border-radius: 6px;
+      padding: 0.12rem 0.45rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    /* "Voir" consumption btn */
+    .btn-consumption {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.15rem 0.5rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-consumption:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ============================================================
+       EMPTY STATE
+       ============================================================ */
+    .empty-state {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 3rem;
+      text-align: center;
+      color: var(--text-muted);
+    }
+    .empty-state .icon { font-size: 2.2rem; margin-bottom: 0.5rem; }
+
+    /* ============================================================
+       MODAL
+       ============================================================ */
+    .modal-content {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: var(--text);
+    }
+    .modal-header { border-bottom: 1px solid var(--border); padding: 1rem 1.25rem; }
+    .modal-header .btn-close { filter: invert(1); }
+    .modal-title { font-size: 1rem; font-weight: 600; }
+    .modal-body { padding: 1.25rem; }
+    .modal-footer { border-top: 1px solid var(--border); padding: 0.75rem 1.25rem; justify-content:flex-end; display:flex; }
+
+    .modal-subtitle { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.15rem; }
+
+    .slope-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.3rem 0.55rem;
+      font-size: 0.82rem;
+      max-width: 160px;
+    }
+    .slope-select option { background: var(--surface2); }
+
+    .slope-value-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text);
+    }
+    .slope-source { color: var(--text-muted); font-size: 0.72rem; }
+
+    .alert-warn-modal {
+      background: rgba(245,158,11,0.1);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 8px;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.8rem;
+      color: var(--orange);
+      margin-bottom: 0.75rem;
+    }
+    .alert-warn-modal.d-none { display: none !important; }
+
+    .btn-modal-close {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.3rem 0.85rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-modal-close:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ============================================================
+       THEME TOGGLE PILL
+       ============================================================ */
+    .theme-toggle {
+      display: flex;
+      align-items: center;
+      width: 48px; height: 26px;
+      border-radius: 13px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      cursor: pointer;
+      padding: 0 2px;
+      transition: background .3s, border-color .3s;
+      position: relative;
+    }
+    .theme-toggle:hover { border-color: var(--accent); }
+
+    .theme-toggle .knob {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; line-height: 1;
+      box-shadow: 0 1px 4px rgba(0,0,0,.25);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+      /* dark = left (default) */
+    }
+    html.light .theme-toggle .knob {
+      transform: translateX(22px);   /* slide right in light */
+    }
+
+    /* modal close ✕ — invert only in dark */
+    .modal-header .btn-close { filter: invert(1); }
+    html.light .modal-header .btn-close { filter: none; }
+
+    /* ============================================================
+       SCROLLBAR (webkit)
+       ============================================================ */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  </style>
+</head>
+
+<body>
+
+<!-- ============================================================
+     TOP BAR
+     ============================================================ -->
+<nav class="top-bar">
+  <div class="logo">toner<span>.</span>ai <span style="color:var(--text-muted); font-family:'DM Sans',sans-serif; font-weight:500; font-size:0.82rem;"> — Adexgroup v2.1</span></div>
+  <div class="stat-chips">
+    <!-- theme toggle 🌙 / ☀️ -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Basculer thème">
+      <span class="knob" id="themeIcon">🌙</span>
+    </button>
+    <!-- Alertes button — ALWAYS visible -->
+    <a href="/alertes" class="btn-alertes">
+      ⚠️ Alertes
+      <span class="badge-count">{{ nb_alertes_non_prioritaires }}</span>
+    </a>
+    <div class="stat-chip"><span class="label">Total</span><span class="val">{{ total_rows }}</span></div>
+    <div class="stat-chip"><span class="label">À traiter</span><span class="val">{{ pending_rows }}</span></div>
+    <div class="stat-chip"><span class="label">Envoyés</span><span class="val">{{ sent_rows }}</span></div>
+  </div>
+</nav>
+
+<!-- ============================================================
+     MAIN
+     ============================================================ -->
+<div class="main-wrap">
+
+  <!-- ---- FILTER BAR ---- -->
+  <form class="filter-bar" method="get" action="/">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4 col-12">
+        <label class="form-label">Recherche série</label>
+        <input type="text" class="form-control" name="serial_query" placeholder="Ex : XAUV, NV0L…" value="{{ serial_query }}">
       </div>
 
-      <!-- Zone filtres -->
-      <form class="row g-3 mb-4" method="get" action="/">
-        <div class="col-md-4">
-          <label class="form-label">Recherche n° de série</label>
-          <input
-            type="text"
-            class="form-control"
-            name="serial_query"
-            placeholder="Ex : XAUV, NV0L..."
-            value="{{ serial_query }}"
-          >
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label">Priorité</label>
-          <select class="form-select" name="priority">
-            <option value="">Toutes</option>
-            {% for p in priorities %}
-              <option value="{{ p }}" {% if p|string == selected_priority %}selected{% endif %}>
-                {{ p }}
-              </option>
-            {% endfor %}
-          </select>
-          <small class="text-muted">1 = critique, 4 = faible</small>
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label">Type de livraison</label>
-          <select class="form-select" name="type_livraison">
-            <option value="">Tous les types</option>
-            {% for tl in type_liv_options %}
-              <option value="{{ tl }}" {% if tl == selected_type_liv %}selected{% endif %}>
-                {% if tl == "contrat_maintenance" %}Contrat de maintenance
-                {% elif tl == "commande_simple" %}Commande simple
-                {% elif tl == "stock_seulement" %}Stock seulement
-                {% else %}{{ tl }}{% endif %}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Filtre suivi KPAX -->
-        <div class="col-12">
-          <label class="form-label">Suivi KPAX</label>
-          <div class="btn-group" role="group" aria-label="Filtre suivi KPAX">
-            <input type="radio" class="btn-check" name="rupture_mode" id="rupt_all" value="all"
-              {% if rupture_mode == "all" %}checked{% endif %}>
-            <label class="btn btn-outline-primary" for="rupt_all">Tout</label>
-
-            <input type="radio" class="btn-check" name="rupture_mode" id="rupt_ok" value="ok"
-              {% if rupture_mode == "ok" %}checked{% endif %}>
-            <label class="btn btn-outline-primary" for="rupt_ok">✅ À jour</label>
-
-            <input type="radio" class="btn-check" name="rupture_mode" id="rupt_rupture" value="rupture"
-              {% if rupture_mode == "rupture" %}checked{% endif %}>
-            <label class="btn btn-outline-primary" for="rupt_rupture">⚠️ Pas de données</label>
-          </div>
-          <small class="text-muted">KPAX muet depuis plus de 20 jours ou aucune donnée reçue</small>
-        </div>
-
-        <div class="col-12 d-flex justify-content-end">
-          <button type="submit" class="btn btn-primary me-2">Filtrer</button>
-          <a href="/" class="btn btn-primary me-2">Réinitialiser</a>
-        </div>
-      </form>
-
-      <!-- Graphiques de synthèse -->
-      <div class="row mb-4">
-        <div class="col-md-6 mb-3">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <h5 class="card-title mb-3">Répartition par priorité</h5>
-              <canvas id="priorityChart" height="180"></canvas>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-6 mb-3">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <h5 class="card-title mb-3">Répartition par couleur de toner</h5>
-              <canvas id="colorChart" height="180"></canvas>
-            </div>
-          </div>
-        </div>
+      <div class="col-md-2 col-6">
+        <label class="form-label">Priorité</label>
+        <select class="form-select" name="priority">
+          <option value="">Toutes</option>
+          {% for p in priorities %}
+            <option value="{{ p }}" {% if p|string == selected_priority %}selected{% endif %}>P{{ p }}</option>
+          {% endfor %}
+        </select>
       </div>
 
-      <!-- Liste des imprimantes regroupées -->
-      {% if grouped_printers %}
-        {% for printer in grouped_printers %}
-          <div class="card printer-card shadow-sm mb-3">
-            <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
-              <div class="mb-2">
-                <strong>Imprimante :</strong> {{ printer.serial_display }}
+      <div class="col-md-3 col-6">
+        <label class="form-label">Type livraison</label>
+        <select class="form-select" name="type_livraison">
+          <option value="">Tous</option>
+          {% for tl in type_liv_options %}
+            <option value="{{ tl }}" {% if tl == selected_type_liv %}selected{% endif %}>
+              {% if tl == "contrat_maintenance" %}Contrat maintenance
+              {% elif tl == "commande_simple" %}Commande simple
+              {% elif tl == "stock_seulement" %}Stock seulement
+              {% else %}{{ tl }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
 
-                <a
-                  class="btn btn-sm btn-primary ms-2"
-                  href="/printer/{{ printer.serial_display }}"
-                >
-                  Détails
-                </a>
+      <div class="col-md-3 col-12">
+        <label class="form-label">Suivi KPAX</label>
+        <div class="kpax-group">
+          <input type="radio" name="rupture_mode" id="rupt_all" value="all" {% if rupture_mode == "all" %}checked{% endif %}>
+          <label for="rupt_all">Tout</label>
 
-                <div class="mt-2" data-slopes-for="{{ printer.serial_display }}"></div>
+          <input type="radio" name="rupture_mode" id="rupt_ok" value="ok" {% if rupture_mode == "ok" %}checked{% endif %}>
+          <label for="rupt_ok">✅ À jour</label>
 
-                {% if printer.client %}
-                  <span class="ms-3"><strong>Client :</strong> {{ printer.client }}</span>
-                {% endif %}
-                {% if printer.contract %}
-                  <span class="ms-3 text-muted">Contrat : {{ printer.contract }}</span>
-                {% endif %}
-                {% if printer.city %}
-                  <span class="ms-3 text-muted">Ville : {{ printer.city }}</span>
-                {% endif %}
-                {% if printer.min_stockout_date %}
-                  <span class="ms-3 text-muted">
-                    Rupture toner la plus proche : <strong>{{ printer.min_stockout_date }}</strong>
-                  </span>
-                {% endif %}
-                {% if printer.min_days_left is not none %}
-                  <span class="ms-3 text-muted">
-                    Jours restants min : <strong>{{ printer.min_days_left|round(0) }}</strong>
-                  </span>
-                {% endif %}
-
-                <!-- Alerte contrat fin proche -->
-                {% if printer.alerte_fin_proche and printer.date_fin_contrat %}
-                  <div class="mt-2">
-                    <span class="badge bg-warning text-dark">
-                      ⚠️ Contrat se termine le {{ printer.date_fin_contrat }}
-                    </span>
-                  </div>
-                {% endif %}
-
-                <!-- Boutons rapides par toner (couleur) -->
-                {% if printer.colors_present and printer.colors_present|length > 0 %}
-                  <div class="mt-2">
-                    <span class="text-muted me-2">Consommation :</span>
-                    {% for c in printer.colors_present %}
-                      <button
-                        type="button"
-                        class="btn btn-sm btn-outline-primary btn-toner slope-btn"
-                        data-serial="{{ printer.serial_display }}"
-                        data-color="{{ c }}"
-                        data-bs-toggle="modal"
-                        data-bs-target="#slopeModal"
-                      >
-                        {{ c }}
-                      </button>
-                    {% endfor %}
-                  </div>
-                {% endif %}
-              </div>
-
-              <div class="mb-2">
-                {% if printer.min_priority is not none %}
-                  {% set p = printer.min_priority %}
-                  <span class="badge
-                    {% if p == 1 %}badge-prio-1
-                    {% elif p == 2 %}badge-prio-2
-                    {% elif p == 3 %}badge-prio-3
-                    {% else %}badge-prio-4{% endif %}">
-                    Priorité min : {{ printer.min_priority }}
-                  </span>
-                {% endif %}
-              </div>
-            </div>
-
-            <div class="card-body p-0">
-              <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                  <thead class="table-light">
-                    <tr>
-                      <th style="width: 4%">ID</th>
-                      <th style="width: 12%">Toner</th>
-                      <th style="width: 10%">Jours restants</th>
-                      <th style="width: 14%">Date rupture est.</th>
-                      <th style="width: 9%">Priorité</th>
-                      <th style="width: 11%">Dernière remontée</th>
-                      <th style="width: 10%">Suivi KPAX</th>
-                      <th style="width: 7%">% actuel</th>
-                      <th style="width: 13%">Type livraison</th>
-                      <th style="width: 14%">Commentaire</th>
-                      <th style="width: 10%">Consommation</th>
-                      <th style="width: 16%">Action</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {% for r in printer.rows %}
-                      {% set rid = r[col_id] %}
-                      {% set prio = r.get(col_priority) %}
-                      {% set is_rupture = r.get('rupture_kpax') %}
-
-                      {% set color_val = (r.get('couleur_norm') or r.get('couleur') or '') %}
-                      {% set color_val = color_val|string|lower|trim %}
-
-                      <tr
-                        data-rupture="{{ 1 if is_rupture else 0 }}"
-                        class="{% if rid in processed_ids %}table-success{% endif %}"
-                      >
-                        <td>{{ rid }}</td>
-                        <td>{{ r.get(col_toner, '') }}</td>
-                        <td>{{ r.get(col_days, '') }}</td>
-                        <td>{{ r.get(col_stockout, '') }}</td>
-
-                        <td>
-                          {% if prio is not none %}
-                            <span class="badge
-                              {% if prio == 1 %}badge-prio-1
-                              {% elif prio == 2 %}badge-prio-2
-                              {% elif prio == 3 %}badge-prio-3
-                              {% else %}badge-prio-4{% endif %}">
-                              P{{ prio }}
-                            </span>
-                          {% endif %}
-                        </td>
-
-
-                        <td>{{ r.get(col_last_update, '') }}</td>
-
-                        <td>
-                          {% if is_rupture %}
-                            <span class="badge bg-warning text-dark">⚠️ Pas de données</span>
-                          {% else %}
-                            <span class="badge bg-success text-white">✅ À jour</span>
-                          {% endif %}
-                        </td>
-
-                        <td>
-                          {% if r.get(col_last_pct) is not none %}
-                            {{ r.get(col_last_pct) | round(0) }}%
-                          {% endif %}
-                        </td>
-
-                        <td>
-                          {% set tl = r.get(col_type_liv, '') %}
-                          {% if tl == "contrat_maintenance" %}
-                            <span class="badge badge-type badge-type-contrat">Contrat maintenance</span>
-                          {% elif tl == "commande_simple" %}
-                            <span class="badge badge-type badge-type-commande">Commande simple</span>
-                          {% elif tl == "stock_seulement" %}
-                            <span class="badge badge-type badge-type-stock">Stock seulement</span>
-                          {% elif tl %}
-                            <span class="badge badge-type badge-type-inconnu">{{ tl }}</span>
-                          {% endif %}
-                        </td>
-
-                        <td>{{ r.get(col_comment, '') }}</td>
-
-                        <!-- Consommation (modal pente) -->
-                        <td>
-                          {% if color_val %}
-                            <button
-                              type="button"
-                              class="btn btn-sm btn-outline-dark slope-btn"
-                              data-serial="{{ printer.serial_display }}"
-                              data-color="{{ color_val }}"
-                              data-bs-toggle="modal"
-                              data-bs-target="#slopeModal"
-                            >
-                              📈 Voir
-                            </button>
-                          {% else %}
-                            <span class="text-muted">—</span>
-                          {% endif %}
-                        </td>
-
-                        <!-- Action + état en un seul bloc -->
-                        <td>
-                          {% if rid not in processed_ids %}
-                            <form method="post" action="{{ url_for('mark_processed', row_id=rid) }}">
-                              <button type="submit" class="btn btn-sm btn-outline-success">
-                                Marquer comme envoyé
-                              </button>
-                            </form>
-                          {% else %}
-                            <div class="d-flex align-items-center gap-2">
-                              <span class="badge bg-success text-white">✅ Envoyé</span>
-                              <form method="post" action="{{ url_for('mark_unprocessed', row_id=rid) }}">
-                                <button type="submit" class="btn btn-sm btn-outline-warning">
-                                  Annuler
-                                </button>
-                              </form>
-                            </div>
-                          {% endif %}
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-
-                </table>
-              </div>
-            </div>
-          </div>
-        {% endfor %}
-      {% else %}
-        <div class="alert alert-info">
-          Aucune recommandation trouvée avec ces filtres.
+          <input type="radio" name="rupture_mode" id="rupt_rupture" value="rupture" {% if rupture_mode == "rupture" %}checked{% endif %}>
+          <label for="rupt_rupture">⚠️ Pas de données</label>
         </div>
-      {% endif %}
+      </div>
     </div>
 
-    <!-- ✅ MODAL PENTE -->
-    <div class="modal fade" id="slopeModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header">
-            <div>
-              <h5 class="modal-title mb-1">Pente de consommation</h5>
-              <div class="text-muted small" id="slopeSubtitle"></div>
+    <!-- pending hidden -->
+    {% if show_only_pending %}
+      <input type="hidden" name="pending" value="1">
+    {% endif %}
+
+    <div class="filter-actions">
+      <button type="submit" class="btn-filter">Filtrer</button>
+      <a href="/" class="btn-reset">Réinitialiser</a>
+    </div>
+  </form>
+
+  <!-- ---- CHARTS ---- -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <h4>Répartition par priorité</h4>
+      <canvas id="priorityChart" height="140"></canvas>
+    </div>
+    <div class="chart-card">
+      <h4>Répartition par couleur</h4>
+      <canvas id="colorChart" height="140"></canvas>
+    </div>
+  </div>
+
+  <!-- ---- PRINTER CARDS ---- -->
+  {% if grouped_printers %}
+    {% for printer in grouped_printers %}
+    <div class="printer-card">
+
+      <!-- HEADER -->
+      <div class="pc-header">
+        <div>
+          <div class="pc-serial">
+            <span class="icon">🖨️</span>
+            {{ printer.serial_display }}
+            <a href="/printer/{{ printer.serial_display }}" class="btn-detail">Détails →</a>
+          </div>
+
+          <div class="pc-meta">
+            {% if printer.client %}  <span><strong>Client</strong> {{ printer.client }}</span>{% endif %}
+            {% if printer.city %}    <span><strong>Ville</strong> {{ printer.city }}</span>{% endif %}
+            {% if printer.contract %}<span><strong>Contrat</strong> {{ printer.contract }}</span>{% endif %}
+            {% if printer.min_stockout_date %}<span><strong>Rupture la plus proche</strong> {{ printer.min_stockout_date }}</span>{% endif %}
+            {% if printer.min_days_left is not none %}<span><strong>Jours min</strong> {{ printer.min_days_left|round(0)|int }}</span>{% endif %}
+          </div>
+
+          <!-- Alerte fin contrat proche -->
+          {% if printer.alerte_fin_proche and printer.date_fin_contrat %}
+            <div class="alert-fin-proche">⏰ Contrat se termine le {{ printer.date_fin_contrat }}</div>
+          {% endif %}
+
+          <!-- Slopes (loaded async) -->
+          <div class="slopes-row" data-slopes-for="{{ printer.serial_display }}"></div>
+
+          <!-- Toner quick buttons -->
+          {% if printer.colors_present and printer.colors_present|length > 0 %}
+            <div class="toner-btns">
+              {% for c in printer.colors_present %}
+                <button type="button" class="btn-toner-quick slope-btn"
+                  data-serial="{{ printer.serial_display }}" data-color="{{ c }}"
+                  data-bs-toggle="modal" data-bs-target="#slopeModal">{{ c }}</button>
+              {% endfor %}
             </div>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
-          </div>
+          {% endif %}
+        </div>
 
-          <div class="modal-body">
-            <div class="d-flex gap-2 flex-wrap align-items-center mb-3">
-              <label class="form-label mb-0 me-2">Toner :</label>
-              <select class="form-select form-select-sm" id="slopeColorSelect" style="max-width: 220px;">
-                <option value="black">black</option>
-                <option value="cyan">cyan</option>
-                <option value="magenta">magenta</option>
-                <option value="yellow">yellow</option>
-              </select>
-
-              <span class="badge bg-light text-dark slope-pill" id="slopeValuePill">
-                pente: —
-              </span>
-              <span class="text-muted small" id="slopeSource"></span>
-            </div>
-
-            <div class="alert alert-warning d-none" id="slopeWarn"></div>
-
-            <canvas id="slopeChart" height="140"></canvas>
-          </div>
-
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fermer</button>
-          </div>
+        <!-- Priority badge top-right -->
+        <div>
+          {% if printer.min_priority is not none %}
+            <span class="badge-prio badge-prio-{{ printer.min_priority }}">P{{ printer.min_priority }}</span>
+          {% endif %}
         </div>
       </div>
+
+      <!-- TABLE -->
+      <div class="pc-table-wrap">
+        <table class="toner-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Toner</th>
+              <th>Jours rest.</th>
+              <th>Date rupture</th>
+              <th>Priorité</th>
+              <th>Dernière remontée</th>
+              <th>KPAX</th>
+              <th>%</th>
+              <th>Type liv.</th>
+              <th>Commentaire</th>
+              <th>Consommation</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in printer.rows %}
+              {% set rid = r[col_id] %}
+              {% set prio = r.get(col_priority) %}
+              {% set is_rupture = r.get('rupture_kpax') %}
+              {% set color_val = (r.get('couleur_norm') or r.get('couleur') or '')|string|lower|trim %}
+
+              <tr class="{% if rid in processed_ids %}row-sent{% endif %}">
+                <td style="color:var(--text-muted)">{{ rid }}</td>
+                <td><strong>{{ r.get(col_toner, '') }}</strong></td>
+                <td>{{ r.get(col_days, '—') }}</td>
+                <td>{{ r.get(col_stockout, '—') }}</td>
+
+                <td>
+                  {% if prio is not none %}
+                    <span class="badge-prio badge-prio-{{ prio|int }}">P{{ prio|int }}</span>
+                  {% endif %}
+                </td>
+
+                <td style="color:var(--text-muted); font-family:'DM Mono',monospace; font-size:0.75rem;">
+                  {{ r.get(col_last_update, '—') }}
+                </td>
+
+                <td>
+                  {% if is_rupture %}
+                    <span class="badge-type badge-kpax-warn">⚠️ Pas de données</span>
+                  {% else %}
+                    <span class="badge-type badge-kpax-ok">✅ À jour</span>
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if r.get(col_last_pct) is not none %}
+                    <strong>{{ r.get(col_last_pct)|round(0)|int }}%</strong>
+                  {% else %}—{% endif %}
+                </td>
+
+                <td>
+                  {% set tl = r.get(col_type_liv, '') %}
+                  {% if tl == "contrat_maintenance" %}
+                    <span class="badge-type badge-type-contrat">Contrat</span>
+                  {% elif tl == "commande_simple" %}
+                    <span class="badge-type badge-type-commande">Commande</span>
+                  {% elif tl == "stock_seulement" %}
+                    <span class="badge-type badge-type-stock">Stock</span>
+                  {% elif tl %}
+                    <span class="badge-type badge-type-inconnu">{{ tl }}</span>
+                  {% endif %}
+                </td>
+
+                <td style="color:var(--text-muted); max-width:140px;">{{ r.get(col_comment, '') }}</td>
+
+                <!-- Consumption modal trigger -->
+                <td>
+                  {% if color_val %}
+                    <button type="button" class="btn-consumption slope-btn"
+                      data-serial="{{ printer.serial_display }}" data-color="{{ color_val }}"
+                      data-bs-toggle="modal" data-bs-target="#slopeModal">📈 Voir</button>
+                  {% else %}
+                    <span style="color:var(--text-muted)">—</span>
+                  {% endif %}
+                </td>
+
+                <!-- Action -->
+                <td>
+                  {% if rid not in processed_ids %}
+                    <form method="post" action="{{ url_for('mark_processed', row_id=rid) }}" style="margin:0">
+                      <button type="submit" class="btn-mark">✓ Envoyé</button>
+                    </form>
+                  {% else %}
+                    <div style="display:flex;align-items:center;gap:0.4rem;">
+                      <span class="badge-sent">✅ Envoyé</span>
+                      <form method="post" action="{{ url_for('mark_unprocessed', row_id=rid) }}" style="margin:0">
+                        <button type="submit" class="btn-unmark">↩</button>
+                      </form>
+                    </div>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div><!-- /printer-card -->
+    {% endfor %}
+
+  {% else %}
+    <div class="empty-state">
+      <div class="icon">🔍</div>
+      <div>Aucune recommandation trouvée avec ces filtres.</div>
     </div>
+  {% endif %}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</div><!-- /main-wrap -->
 
-    <script id="priority-data" type="application/json">
-      {{ priority_counts | tojson }}
-    </script>
-    <script id="color-data" type="application/json">
-      {{ color_counts | tojson }}
-    </script>
 
-    <script>
-      const priorityCounts = JSON.parse(document.getElementById("priority-data").textContent);
-      const colorCounts = JSON.parse(document.getElementById("color-data").textContent);
+<!-- ============================================================
+     MODAL PENTE
+     ============================================================ -->
+<div class="modal fade" id="slopeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">📈 Pente de consommation</div>
+          <div class="modal-subtitle" id="slopeSubtitle"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.8rem;">
+          <label style="font-size:0.78rem;color:var(--text-muted);">Toner :</label>
+          <select class="slope-select" id="slopeColorSelect">
+            <option value="black">black</option>
+            <option value="cyan">cyan</option>
+            <option value="magenta">magenta</option>
+            <option value="yellow">yellow</option>
+          </select>
+          <span class="slope-value-pill" id="slopeValuePill">pente : —</span>
+          <span class="slope-source" id="slopeSource"></span>
+        </div>
+        <div class="alert-warn-modal d-none" id="slopeWarn"></div>
+        <canvas id="slopeChart" height="140"></canvas>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-modal-close" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-      // Graphique par priorité
-      const prCtx = document.getElementById('priorityChart');
-      if (prCtx && Object.keys(priorityCounts).length > 0) {
-        new Chart(prCtx, {
-          type: 'bar',
-          data: { labels: Object.keys(priorityCounts), datasets: [{ label: 'Nb de toners', data: Object.values(priorityCounts) }] },
-          options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
-          }
-        });
-      }
 
-      // Graphique par couleur
-      const colCtx = document.getElementById('colorChart');
-      if (colCtx && Object.keys(colorCounts).length > 0) {
-        new Chart(colCtx, {
-          type: 'bar',
-          data: { labels: Object.keys(colorCounts), datasets: [{ label: 'Nb de toners', data: Object.values(colorCounts) }] },
-          options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
-          }
-        });
-      }
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-      // ------------------------------------------------------------
-      // ✅ MODAL + CHART PENTE
-      // ------------------------------------------------------------
-      const slopeModal = document.getElementById('slopeModal');
-      const slopeSubtitle = document.getElementById('slopeSubtitle');
-      const slopeColorSelect = document.getElementById('slopeColorSelect');
-      const slopeValuePill = document.getElementById('slopeValuePill');
-      const slopeSource = document.getElementById('slopeSource');
-      const slopeWarn = document.getElementById('slopeWarn');
+<script>
+  const prioData  = {{ priority_counts|tojson }};
+  const colorData = {{ color_counts|tojson }};
+</script>
 
-      let slopeChart = null;
-      let currentSerial = null;
 
-      const COLOR_MAP = {
-        black: "rgb(0,0,0)",
-        cyan: "rgb(0,174,239)",
-        magenta: "rgb(236,0,140)",
-        yellow: "rgb(255,242,0)",
-      };
+<script>
+  // ============================================================
+  // THEME TOGGLE — persisted in localStorage, shared key across pages
+  // ============================================================
+  (function(){
+    const KEY  = 'tonerai-theme';          // 'dark' | 'light'
+    const html = document.documentElement;
+    const btn  = document.getElementById('themeToggle');
+    const icon = document.getElementById('themeIcon');
 
-      function destroySlopeChart() {
-        if (slopeChart) {
-          slopeChart.destroy();
-          slopeChart = null;
+    function apply(t) {
+      if (t === 'light') { html.classList.add('light');    icon.textContent = '☀️'; }
+      else               { html.classList.remove('light'); icon.textContent = '🌙'; }
+    }
+    // init before first paint → no flicker
+    apply(localStorage.getItem(KEY) || 'dark');
+
+    btn.addEventListener('click', () => {
+      const next = html.classList.contains('light') ? 'dark' : 'light';
+      apply(next);
+      localStorage.setItem(KEY, next);
+      requestAnimationFrame(reThemeCharts);   // update Chart.js axes live
+    });
+  })();
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+  function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+  function chartGridColor() { return cssVar('--border'); }
+  function chartTickColor() { return cssVar('--text-muted'); }
+
+  // ============================================================
+  // BAR CHARTS
+  // ============================================================
+  function pChart(id, labels, values, colors) {
+    const ctx = document.getElementById(id);
+    if (!ctx || !labels.length) return null;
+    return new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors || 'rgba(108,99,255,0.55)',
+          borderColor: 'rgba(108,99,255,0.8)',
+          borderWidth: 1,
+          borderRadius: 5,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: chartGridColor() }, ticks: { color: chartTickColor() } },
+          y: { beginAtZero: true, grid: { color: chartGridColor() }, ticks: { color: chartTickColor(), precision: 0 } }
         }
       }
+    });
+  }
 
-      function setWarn(msg) {
-        if (!msg) {
-          slopeWarn.classList.add("d-none");
-          slopeWarn.textContent = "";
-          return;
+  const prioColors  = { '1':'#ef4444','2':'#f59e0b','3':'#eab308','4':'#22c55e' };
+  const tonerColors = { black:'#888', cyan:'#06b6d4', magenta:'#e11d48', yellow:'#eab308' };
+
+  const chartPrio  = pChart('priorityChart', Object.keys(prioData),  Object.values(prioData),  Object.keys(prioData).map(k => prioColors[k]  || '#6c63ff'));
+  const chartColor = pChart('colorChart',    Object.keys(colorData), Object.values(colorData), Object.keys(colorData).map(k => tonerColors[k.toLowerCase()] || '#6c63ff'));
+
+  // live re-colour axes after theme switch
+  function reThemeCharts() {
+    const g = chartGridColor(), t = chartTickColor();
+    [chartPrio, chartColor].forEach(ch => {
+      if (!ch) return;
+      ch.options.scales.x.grid.color  = g;
+      ch.options.scales.x.ticks.color = t;
+      ch.options.scales.y.grid.color  = g;
+      ch.options.scales.y.ticks.color = t;
+      ch.update();
+    });
+  }
+
+  // ============================================================
+  // SLOPES ASYNC LOAD
+  // ============================================================
+  function slopeBadge(color, value) {
+    const txt = (value === null || value === undefined || isNaN(value)) ? '—' : Number(value).toFixed(3) + ' %/j';
+    return `<span class="slope-pill"><strong>${color}</strong> ${txt}</span>`;
+  }
+
+  document.querySelectorAll('[data-slopes-for]').forEach(async container => {
+    const serial = container.dataset.slopesFor;
+    try {
+      const res  = await fetch(`/api/slopes?serial=${encodeURIComponent(serial)}`);
+      const data = await res.json();
+      if (data.error) return;
+      const s = data.slopes || {};
+      container.innerHTML =
+        slopeBadge('black', s.black) + slopeBadge('cyan', s.cyan) +
+        slopeBadge('magenta', s.magenta) + slopeBadge('yellow', s.yellow);
+    } catch(e) { /* silent */ }
+  });
+
+  // ============================================================
+  // MODAL PENTE
+  // ============================================================
+  const slopeModal     = document.getElementById('slopeModal');
+  const slopeSubtitle  = document.getElementById('slopeSubtitle');
+  const slopeColorSel  = document.getElementById('slopeColorSelect');
+  const slopeValuePill = document.getElementById('slopeValuePill');
+  const slopeSourceEl  = document.getElementById('slopeSource');
+  const slopeWarn      = document.getElementById('slopeWarn');
+
+  let slopeChart = null;
+  let currentSerial = null;
+
+  const COLOR_MAP = { black:'rgb(0,0,0)', cyan:'rgb(0,174,239)', magenta:'rgb(236,0,140)', yellow:'rgb(255,242,0)' };
+
+  function destroySlopeChart() { if (slopeChart) { slopeChart.destroy(); slopeChart = null; } }
+
+  function setWarn(msg) {
+    if (!msg) { slopeWarn.classList.add('d-none'); slopeWarn.textContent=''; return; }
+    slopeWarn.textContent = msg;
+    slopeWarn.classList.remove('d-none');
+  }
+
+  async function loadAndRender(serial, color) {
+    currentSerial = serial;
+    const c = (color || 'black').toLowerCase();
+    slopeSubtitle.textContent = `Imprimante : ${serial}`;
+    slopeColorSel.value = c;
+    slopeValuePill.textContent = 'pente : …';
+    slopeSourceEl.textContent = '';
+    setWarn(null);
+    destroySlopeChart();
+
+    const res  = await fetch(`/api/consumption?serial=${encodeURIComponent(serial)}&color=${encodeURIComponent(c)}`);
+    const data = await res.json();
+
+    if (data.error) { setWarn('Erreur : ' + data.error); slopeValuePill.textContent = 'pente : —'; return; }
+
+    const slope = data.slope_pct_per_day;
+    slopeValuePill.textContent = (slope === null || slope === undefined) ? 'pente : —' : `pente : ${Number(slope).toFixed(3)} %/jour`;
+    if (data.slope_source) slopeSourceEl.textContent = `(source : ${data.slope_source})`;
+
+    const points = data.points || [];
+    if (!points.length) { setWarn('Aucun historique KPAX pour ce toner.'); return; }
+
+    const labels    = points.map(p => p.date);
+    const values    = points.map(p => p.pct);
+    const lineColor = COLOR_MAP[c] || 'rgb(108,99,255)';
+
+    slopeChart = new Chart(document.getElementById('slopeChart'), {
+      type: 'line',
+      data: { labels, datasets: [{ label: `% (${c})`, data: values, tension: 0.25, pointRadius: 2, borderColor: lineColor, backgroundColor: lineColor }] },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: true, labels: { color: cssVar('--text') } } },
+        scales: {
+          x: { grid: { color: chartGridColor() }, ticks: { color: chartTickColor() } },
+          y: { beginAtZero: true, suggestedMax: 100, grid: { color: chartGridColor() }, ticks: { color: chartTickColor() } }
         }
-        slopeWarn.textContent = msg;
-        slopeWarn.classList.remove("d-none");
       }
+    });
+  }
 
-      async function loadAndRender(serial, color) {
-        currentSerial = serial;
-        const c = (color || "black").toLowerCase();
+  document.querySelectorAll('.slope-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadAndRender(btn.dataset.serial, btn.dataset.color || 'black'));
+  });
+  slopeColorSel.addEventListener('change', () => { if (currentSerial) loadAndRender(currentSerial, slopeColorSel.value); });
+  slopeModal.addEventListener('hidden.bs.modal', () => { destroySlopeChart(); currentSerial = null; setWarn(null); slopeValuePill.textContent = 'pente : —'; });
+</script>
 
-        slopeSubtitle.textContent = `Imprimante: ${serial}`;
-        slopeColorSelect.value = c;
-
-        slopeValuePill.textContent = "pente: …";
-        slopeSource.textContent = "";
-        setWarn(null);
-
-        destroySlopeChart();
-
-        const url = `/api/consumption?serial=${encodeURIComponent(serial)}&color=${encodeURIComponent(c)}`;
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (data.error) {
-          setWarn("Erreur: " + data.error);
-          slopeValuePill.textContent = "pente: —";
-          return;
-        }
-
-        const slope = data.slope_pct_per_day;
-        if (slope === null || slope === undefined) {
-          slopeValuePill.textContent = "pente: —";
-        } else {
-          const s = Number(slope);
-          slopeValuePill.textContent = `pente: ${s.toFixed(3)} %/jour`;
-        }
-
-        if (data.slope_source) {
-          slopeSource.textContent = `(source: ${data.slope_source})`;
-        }
-
-        const points = data.points || [];
-        if (!points.length) {
-          setWarn("Aucun historique KPAX trouvé pour ce toner. (On affiche seulement la pente si disponible via forecasts)");
-          return;
-        }
-
-        const labels = points.map(p => p.date);
-        const values = points.map(p => p.pct);
-
-        const lineColor = COLOR_MAP[c] || "rgb(0,0,0)";
-
-        const ctx = document.getElementById("slopeChart");
-        slopeChart = new Chart(ctx, {
-          type: "line",
-          data: {
-            labels,
-            datasets: [{
-              label: `% toner (${c})`,
-              data: values,
-              tension: 0.25,
-              pointRadius: 2,
-              borderColor: lineColor,
-              backgroundColor: lineColor
-            }]
-          },
-          options: {
-            responsive: true,
-            plugins: { legend: { display: true } },
-            scales: {
-              y: { beginAtZero: true, suggestedMax: 100 }
-            }
-          }
-        });
-      }
-
-      // Click bouton "Voir pente"
-      document.querySelectorAll(".slope-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const serial = btn.dataset.serial;
-          const color = btn.dataset.color || "black";
-          loadAndRender(serial, color);
-        });
-      });
-
-      // Changement de toner dans la modal
-      slopeColorSelect.addEventListener("change", () => {
-        if (!currentSerial) return;
-        loadAndRender(currentSerial, slopeColorSelect.value);
-      });
-
-      // Clean quand on ferme la modal
-      slopeModal.addEventListener("hidden.bs.modal", () => {
-        destroySlopeChart();
-        currentSerial = null;
-        setWarn(null);
-        slopeValuePill.textContent = "pente: —";
-      });
-    </script>
-
-    <script>
-      function formatSlope(v) {
-        if (v === null || v === undefined || Number.isNaN(v)) return "—";
-        const n = Number(v);
-        return `${n.toFixed(3)} %/jour`;
-      }
-
-      function slopeBadge(color, value) {
-        const txt = formatSlope(value);
-        return `
-          <span class="badge bg-light text-dark me-2 mb-1">
-            <strong>${color}</strong> : ${txt}
-          </span>
-        `;
-      }
-
-      async function loadPrinterSlopes(serial) {
-        const container = document.querySelector(`[data-slopes-for="${CSS.escape(serial)}"]`);
-        if (!container) return;
-
-        container.innerHTML = `<span class="text-muted small">Chargement…</span>`;
-
-        const url = `/api/slopes?serial=${encodeURIComponent(serial)}`;
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (data.error) {
-          container.innerHTML = `<span class="text-danger small">Erreur: ${data.error}</span>`;
-          return;
-        }
-
-        const s = data.slopes || {};
-        container.innerHTML = `
-          <div class="d-flex flex-wrap align-items-center">
-            ${slopeBadge("black", s.black)}
-            ${slopeBadge("cyan", s.cyan)}
-            ${slopeBadge("magenta", s.magenta)}
-            ${slopeBadge("yellow", s.yellow)}
-          </div>
-          <div class="text-muted small mt-1">
-            (pente = régression linéaire, %/jour ; “—” si pas assez de points)
-          </div>
-        `;
-      }
-
-      // Si tu ajoutes un bouton dédié pour charger les pentes imprimante,
-      // donne-lui la classe "printer-slopes-btn" et un data-serial.
-      document.querySelectorAll(".printer-slopes-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const serial = btn.dataset.serial;
-          loadPrinterSlopes(serial);
-        });
-      });
-    </script>
-
-  </body>
+</body>
 </html>

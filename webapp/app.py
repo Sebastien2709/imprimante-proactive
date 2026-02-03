@@ -635,7 +635,7 @@ def _load_data_from_disk():
     if "fallback_p4" not in df.columns:
         df["fallback_p4"] = False
     else:
-        df["fallback_p4"] = df["fallback_p4"].fillna(False).astype(bool)
+        df["fallback_p4"] = df["fallback_p4"].fillna(False).infer_objects(copy=False).astype(bool)
 
     # recast (securite)
     if COLUMN_PRIORITY in df.columns:
@@ -792,7 +792,7 @@ def index():
     # ============================================================
     if "alerte_non_prioritaire" in filtered.columns:
         # Convertir en bool proprement
-        filtered["alerte_non_prioritaire"] = filtered["alerte_non_prioritaire"].fillna(False).astype(bool)
+        filtered["alerte_non_prioritaire"] = filtered["alerte_non_prioritaire"].fillna(False).infer_objects(copy=False).astype(bool)
         nb_alertes_total = filtered["alerte_non_prioritaire"].sum()
         filtered = filtered[~filtered["alerte_non_prioritaire"]].copy()
     else:
@@ -958,7 +958,13 @@ def alertes():
     # Filtrer uniquement les alertes non prioritaires
     if "alerte_non_prioritaire" not in df.columns:
         df["alerte_non_prioritaire"] = False
-    
+
+    # fillna obligatoire : les lignes P4 ajoutées après le premier groupby
+    # n'ont pas cette colonne → NA → ValueError sur le masque booléen.
+    df["alerte_non_prioritaire"] = (
+        df["alerte_non_prioritaire"].fillna(False).infer_objects(copy=False).astype(bool)
+    )
+
     alertes_df = df[df["alerte_non_prioritaire"]].copy()
     
     # Trier
