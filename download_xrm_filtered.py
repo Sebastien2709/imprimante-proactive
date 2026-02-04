@@ -125,7 +125,7 @@ def filename_matches(name):
 
 def extract_date_from_filename(name):
     """Extrait la date du nom de fichier et retourne un tuple (année, mois, jour) pour tri."""
-    match = re.search(r"(\d{7,8})\.txt$", name)
+    match = re.search(r"(\d{6,8})\.txt$", name)
     if not match:
         return (0, 0, 0)
     
@@ -136,11 +136,19 @@ def extract_date_from_filename(name):
         dd = int(date_str[:2])
         mm = int(date_str[2:4])
         yyyy = int(date_str[4:])
-    else:
+    elif len(date_str) == 7:
         # Format DDMYYYY (7 chiffres)
         dd = int(date_str[:2])
-        mm = int(date_str[2:-4])
-        yyyy = int(date_str[-4:])
+        mm = int(date_str[2])
+        yyyy = int(date_str[3:])
+    elif len(date_str) == 6:
+        # Format DMYYYY (6 chiffres: jour 1 digit, mois 1 digit, année 4 digits)
+        # Ex: 422026 = 4 février 2026
+        dd = int(date_str[0])
+        mm = int(date_str[1])
+        yyyy = int(date_str[2:6])
+    else:
+        return (0, 0, 0)
     
     return (yyyy, mm, dd)
 

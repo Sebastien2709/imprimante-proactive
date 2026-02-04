@@ -421,7 +421,7 @@ def _load_data_from_disk():
     df[COLUMN_SERIAL_DISPLAY] = df[COLUMN_SERIAL].astype(str).str.replace("$", "", regex=False).str.strip()
 
     if COLUMN_DAYS in df.columns:
-        df[COLUMN_DAYS] = pd.to_numeric(df[COLUMN_DAYS], errors="coerce")
+        df[COLUMN_DAYS] = pd.to_numeric(df[COLUMN_DAYS], errors="coerce").round(0).astype("Int64")
 
     if COLUMN_PRIORITY in df.columns:
         df[COLUMN_PRIORITY] = pd.to_numeric(df[COLUMN_PRIORITY], errors="coerce").astype("Int64")
@@ -523,6 +523,11 @@ def _load_data_from_disk():
     df.loc[df["alerte_non_prioritaire"], COLUMN_COMMENT] = (
         "⚠️ Contrat annulé - Fin prévue le " + 
         df.loc[df["alerte_non_prioritaire"], COLUMN_DATE_FIN_CONTRAT].dt.strftime("%d/%m/%Y")
+    )
+    
+    df.loc[df["alerte_contrat_fin_proche"], COLUMN_COMMENT] = (
+        "⏰ Contrat signé - Fin prévue le " + 
+        df.loc[df["alerte_contrat_fin_proche"], COLUMN_DATE_FIN_CONTRAT].dt.strftime("%d/%m/%Y")
     )
 
     nb_alertes_non_prio = df["alerte_non_prioritaire"].sum()

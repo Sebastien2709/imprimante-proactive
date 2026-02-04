@@ -12,8 +12,8 @@ def find_latest(pattern: str) -> Path:
         raise FileNotFoundError(f"Aucun fichier trouvé pour le pattern: {pattern}")
     
     def extract_date(p: Path):
-        # cherche un bloc de 7 ou 8 chiffres type 3012026 ou 30012026
-        m = re.search(r"(\d{7,8})", p.name)
+        # cherche un bloc de 6, 7 ou 8 chiffres type 422026, 3012026, 30012026
+        m = re.search(r"(\d{6,8})", p.name)
         if not m:
             return None
         s = m.group(1)
@@ -21,11 +21,18 @@ def find_latest(pattern: str) -> Path:
         if len(s) == 8:
             # Format DDMMYYYY (ex: 30012026)
             dd, mm, yyyy = int(s[:2]), int(s[2:4]), int(s[4:])
-        else:
-            # Format 7 chiffres DDMYYYY (ex: 3012026 = 30/1/2026)
+        elif len(s) == 7:
+            # Format DDMYYYY (ex: 3012026 = 30/1/2026)
             dd = int(s[:2])
-            mm = int(s[2:-4])  # 1 chiffre pour le mois
-            yyyy = int(s[-4:])
+            mm = int(s[2])      # 1 chiffre pour le mois
+            yyyy = int(s[3:])
+        elif len(s) == 6:
+            # Format DMYYYY (ex: 422026 = 4/2/2026)
+            dd = int(s[0])      # 1 chiffre pour le jour
+            mm = int(s[1])      # 1 chiffre pour le mois
+            yyyy = int(s[2:])
+        else:
+            return None
         
         return (yyyy, mm, dd)
     
