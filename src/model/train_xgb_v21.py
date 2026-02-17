@@ -15,36 +15,45 @@ MODEL_DIR = Path("models")
 
 
 def main():
-    path = DATA_ML / "dataset_v21.parquet"
+    # 🔥 CHANGEMENT : on utilise le dataset avec les VRAIS labels
+    path = DATA_ML / "training_labels_v21.parquet"
+    
     if not path.exists():
-        raise SystemExit(f"[train_xgb_v21] ERREUR: fichier introuvable: {path}")
+        print(f"[train_xgb_v21] ERREUR: fichier introuvable: {path}")
+        print("[train_xgb_v21] Exécute d'abord: python -m src.model.compute_ml_training_labels")
+        raise SystemExit(1)
 
     df = pd.read_parquet(path)
     print(f"[train_xgb_v21] dataset_v21 shape = {df.shape}")
 
-    # --- 1) Vérif présence de la cible ---
-    if "offset_days" not in df.columns:
+    # --- 1) Vérif présence de la cible (VRAIS OFFSETS) ---
+    if "offset_days_real" not in df.columns:
         raise SystemExit(
-            "[train_xgb_v21] ERREUR: colonne 'offset_days' absente. "
-            "Vérifie build_dataset_v21.py."
+            "[train_xgb_v21] ERREUR: colonne 'offset_days_real' absente. "
+            "Vérifie compute_ml_training_labels.py."
         )
 
     # On enlève les lignes sans cible
-    df = df.dropna(subset=["offset_days"]).copy()
+    df = df.dropna(subset=["offset_days_real"]).copy()
     if df.empty:
-        raise SystemExit("[train_xgb_v21] ERREUR: aucune ligne avec offset_days non nul.")
+        raise SystemExit("[train_xgb_v21] ERREUR: aucune ligne avec offset_days_real non nul.")
+
+    print(f"[train_xgb_v21] {len(df)} exemples d'entraînement avec vrais labels")
 
     # --- 2) Cible & features ---
-    y = df["offset_days"].astype(float)
+    y = df["offset_days_real"].astype(float)
 
     # On garde uniquement les colonnes numériques
     num_df = df.select_dtypes(include=[np.number]).copy()
 
-    # On retire la cible des features
+    # On retire la cible + colonnes liées aux dates réelles (pour éviter le data leakage)
+    cols_to_drop = ["offset_days_real", "ship_date_real"]
+    
+    # On retire aussi les anciennes colonnes d'offset si présentes
     if "offset_days" in num_df.columns:
-        X = num_df.drop(columns=["offset_days"])
-    else:
-        X = num_df
+        cols_to_drop.append("offset_days")
+    
+    X = num_df.drop(columns=[c for c in cols_to_drop if c in num_df.columns])
 
     feature_cols = list(X.columns)
     print(f"[train_xgb_v21] nb features numériques = {len(feature_cols)}")
@@ -71,8 +80,7 @@ def main():
         tree_method="hist",
     )
 
-    print("[train_xgb_v21] training...")
-    # ⚠️ Pas d'early_stopping_rounds ici (ta version de xgboost ne le supporte pas)
+    print("[train_xgb_v21] training sur les VRAIS offsets...")
     model.fit(
         X_train,
         y_train,
@@ -88,10 +96,16 @@ def main():
     rmse = mse ** 0.5
     r2 = r2_score(y_test, y_pred)
 
-    print("===== XGB Offset Model V2.1 =====")
+    print("===== XGB Offset Model V2.1 (VRAIS LABELS) =====")
     print(f"MAE   : {mae:.2f} jours")
     print(f"RMSE  : {rmse:.2f} jours")
     print(f"R²    : {r2:.3f}")
+    
+    # Stats sur les offsets réels
+    print(f"\nStats offsets réels:")
+    print(f"  Moyenne : {y.mean():.1f} jours")
+    print(f"  Médiane : {y.median():.1f} jours")
+    print(f"  Écart-type : {y.std():.1f} jours")
 
     # --- 6) Sauvegarde ---
     MODEL_DIR.mkdir(exist_ok=True)
@@ -103,7 +117,7 @@ def main():
 
     out_path = MODEL_DIR / "xgb_offset_model_v21.pkl"
     joblib.dump(bundle, out_path)
-    print(f"[train_xgb_v21] modèle sauvegardé -> {out_path}")
+    print(f"[train_xgb_v21] modèle sauvegardé → {out_path}")
 
 
 if __name__ == "__main__":

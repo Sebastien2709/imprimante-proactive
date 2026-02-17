@@ -9,6 +9,47 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, a
 app = Flask(__name__)
 
 
+# ============================================================
+# FILTRE JINJA POUR FORMATER LES DATES
+# ============================================================
+@app.template_filter('format_date')
+def format_date_filter(value):
+    """
+    Formate une date en JJ/MM/AAAA (sans l'heure)
+    Gère les datetime pandas, les strings, et None
+    """
+    if value is None or value == "" or value == "—":
+        return "—"
+    
+    # Si c'est un Timestamp pandas
+    if isinstance(value, pd.Timestamp):
+        return value.strftime('%d/%m/%Y')
+    
+    # Si c'est un string avec l'heure, on extrait juste la date
+    if isinstance(value, str):
+        # Format "2026-02-18 00:00:00" → "18/02/2026"
+        if ' ' in value:
+            date_part = value.split(' ')[0]
+        else:
+            date_part = value
+        
+        # Si déjà au format ISO (2026-02-18), convertir en JJ/MM/AAAA
+        try:
+            dt = pd.to_datetime(date_part, errors='coerce')
+            if pd.notna(dt):
+                return dt.strftime('%d/%m/%Y')
+        except:
+            pass
+        
+        return date_part
+    
+    # Autres types de datetime
+    try:
+        return value.strftime('%d/%m/%Y')
+    except:
+        return str(value)
+
+
 def load_kpax_history_for_serial(serial: str) -> pd.DataFrame:
     """
     Lit kpax_history_light.csv en CHUNKS et ne garde en mémoire
@@ -231,6 +272,195 @@ def get_slopes_map():
     if _SLOPES_MAP is None:
         _SLOPES_MAP = load_slopes_map()
     return _SLOPES_MAP
+
+
+# ============================================================
+# DÉTECTION ENVOIS RÉCENTS (Item Ledger)
+# ============================================================
+def load_item_ledger():
+    """Charge les envois de toners depuis le fichier ItemLedgEntries le plus récent dans data/raw"""
+    raw_dir = BASE_DIR / "data" / "raw"
+
+    if not raw_dir.exists():
+        print("[ITEM LEDGER] Dossier data/raw introuvable")
+        return pd.DataFrame(columns=["serial_display", "couleur_norm", "date_envoi"])
+
+    # Trouver le fichier ItemLedgEntries le plus récent (.txt ou .csv)
+    latest_file = None
+    for ext_pattern in ["AI_Export_ItemLedgEntries_ADEXGROUP*.txt",
+                        "AI_Export_ItemLedgEntries_ADEXGROUP*.csv",
+                        "AI*Export*Item*Ledg*ADEXGROUP*"]:
+        files = list(raw_dir.glob(ext_pattern))
+        if files:
+            try:
+                from src.data.ingest import find_latest
+                latest_file = find_latest(ext_pattern)
+            except Exception:
+                latest_file = sorted(files)[-1]
+            break
+
+    if latest_file is None:
+        print("[ITEM LEDGER] Aucun fichier ItemLedgEntries trouvé dans data/raw")
+        return pd.DataFrame(columns=["serial_display", "couleur_norm", "date_envoi"])
+
+    print(f"[ITEM LEDGER] Lecture de {latest_file.name}")
+
+    try:
+        # Le fichier est séparé par | et les valeurs encadrées de $
+        df = pd.read_csv(latest_file, sep="|", dtype=str, encoding="utf-8", engine="python")
+
+        # Nettoyer les noms de colonnes : enlever $ et espaces
+        df.columns = df.columns.str.strip().str.replace('$', '', regex=False).str.strip()
+
+        # Nettoyer TOUTES les valeurs : enlever $ et espaces
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip().str.replace('$', '', regex=False).str.strip()
+
+        print(f"[ITEM LEDGER] Colonnes détectées: {list(df.columns)}")
+
+        # Trouver les colonnes par correspondance souple
+        def find_col(candidates):
+            for cand in candidates:
+                for col in df.columns:
+                    if cand.lower() in col.lower():
+                        return col
+            return None
+
+        serial_col  = find_col(["No. serie", "No serie", "serial"])
+        date_col    = find_col(["Date compta", "date compta"])
+        type_col    = find_col(["Type conso"])
+        qty_col     = find_col(["Quantite", "Qty", "qty"])
+
+        missing = [n for n, c in [("serial", serial_col), ("date", date_col),
+                                   ("type_conso", type_col), ("quantite", qty_col)] if c is None]
+        if missing:
+            print(f"[ITEM LEDGER] Colonnes introuvables: {missing}")
+            print(f"[ITEM LEDGER] Colonnes disponibles: {list(df.columns)}")
+            return pd.DataFrame(columns=["serial_display", "couleur_norm", "date_envoi"])
+
+        # Construire le dataframe propre
+        df['serial_display'] = df[serial_col].str.strip().str.upper()
+        df['date_envoi']     = pd.to_datetime(df[date_col], errors='coerce', dayfirst=True)
+
+        # Extraire la couleur depuis "Type conso"
+        couleur_map = {
+            'noir':    'black',
+            'black':   'black',
+            'cyan':    'cyan',
+            'magenta': 'magenta',
+            'jaune':   'yellow',
+            'yellow':  'yellow',
+        }
+
+        def extract_color(type_conso):
+            s = str(type_conso).lower()
+            for key, val in couleur_map.items():
+                if key in s:
+                    return val
+            return None
+
+        df['couleur_norm'] = df[type_col].apply(extract_color)
+
+        # Ne garder que les envois (quantité négative = sortie de stock)
+        df['quantite'] = pd.to_numeric(df[qty_col], errors='coerce')
+        df = df[df['quantite'] < 0]
+
+        # Colonnes finales
+        df = df[['serial_display', 'couleur_norm', 'date_envoi']].dropna(
+            subset=['serial_display', 'couleur_norm', 'date_envoi']
+        )
+
+        # Exclure les serials vides
+        df = df[df['serial_display'].str.len() > 0]
+
+        print(f"[ITEM LEDGER] {len(df)} envois de toners chargés")
+        if len(df) > 0:
+            print(f"[ITEM LEDGER] Exemple: {df.iloc[0].to_dict()}")
+        return df
+
+    except Exception as e:
+        print(f"[ITEM LEDGER] Erreur: {e}")
+        import traceback
+        traceback.print_exc()
+        return pd.DataFrame(columns=["serial_display", "couleur_norm", "date_envoi"])
+
+
+def check_recent_shipments(df):
+    """
+    Vérifie si un toner a été envoyé récemment mais la cartouche n'a pas été changée
+    (basé sur les remontées KPAX après l'envoi)
+    """
+    ledger = load_item_ledger()
+
+    if ledger.empty:
+        print("[ITEM LEDGER] Ledger vide, pas de vérification possible")
+        return df
+
+    kpax_history = get_kpax_last_states()
+    if kpax_history.empty:
+        print("[ITEM LEDGER] KPAX history vide, pas de vérification possible")
+        return df
+
+    today = pd.Timestamp.today().normalize()
+    matches = 0
+
+    # Pour chaque recommandation
+    for idx, row in df.iterrows():
+        # Normaliser le serial en uppercase comme dans le ledger
+        serial = str(row.get(COLUMN_SERIAL_DISPLAY, "")).strip().upper()
+        couleur = str(row.get('couleur_norm', "")).strip().lower()
+
+        if not serial or not couleur:
+            continue
+
+        # Chercher les envois pour ce serial + couleur
+        envois = ledger[
+            (ledger['serial_display'] == serial) &
+            (ledger['couleur_norm'] == couleur)
+        ]
+
+        if envois.empty:
+            continue
+
+        # Prendre l'envoi le plus récent
+        dernier_envoi = envois.sort_values('date_envoi', ascending=False).iloc[0]
+        date_envoi = dernier_envoi['date_envoi']
+        days_ago = (today - date_envoi).days
+
+        # Si envoi il y a moins de 60 jours
+        if 0 < days_ago <= 60:
+            # Vérifier s'il y a eu des remontées KPAX APRÈS l'envoi
+            kpax_serial = kpax_history[
+                (kpax_history['serial_display'].astype(str).str.upper() == serial) &
+                (kpax_history['color'].astype(str).str.lower() == couleur)
+            ]
+
+            if not kpax_serial.empty:
+                last_update = kpax_serial.iloc[0].get('last_update')
+                last_pct = kpax_serial.iloc[0].get('last_pct')
+
+                # Si la dernière remontée est APRÈS l'envoi et toujours bas
+                if pd.notna(last_update) and last_update > date_envoi and pd.notna(last_pct) and last_pct < 20:
+                    current_comment = row.get(COLUMN_COMMENT, "")
+                    
+                    # Message adapté selon le % actuel
+                    if last_pct < 3:
+                        alert = f"🚨 Cartouche non changée (envoyée il y a {days_ago}j)"
+                    else:
+                        alert = f"⚠️ Cartouche non changée (envoyée il y a {days_ago}j)"
+                    
+                    if pd.isna(current_comment) or current_comment == "":
+                        new_comment = alert
+                    else:
+                        new_comment = f"{current_comment} | {alert}"
+                    
+                    df.at[idx, COLUMN_COMMENT] = new_comment
+                    matches += 1
+    
+    if matches > 0:
+        print(f"[ITEM LEDGER] {matches} cartouches envoyées mais non changées détectées")
+    
+    return df
 
 
 # ============================================================
@@ -648,6 +878,48 @@ def _load_data_from_disk():
     if COLUMN_DAYS in df.columns:
         df[COLUMN_DAYS] = pd.to_numeric(df[COLUMN_DAYS], errors="coerce")
 
+    # ============================================================
+    # CALCUL DES JOURS EN NÉGATIF SI RUPTURE DÉJÀ PASSÉE
+    # ET TONER VRAIMENT VIDE (< 3%)
+    # ============================================================
+    if COLUMN_STOCKOUT in df.columns and COLUMN_DAYS in df.columns:
+        # Convertir date_rupture_estimee en datetime
+        df[COLUMN_STOCKOUT] = pd.to_datetime(df[COLUMN_STOCKOUT], errors="coerce")
+        
+        # Créer une nouvelle colonne pour les jours réels (avec négatifs)
+        df["jours_reel"] = df[COLUMN_DAYS].copy()
+        
+        # Pour les lignes où la date de rupture est passée (< aujourd'hui)
+        mask_rupture_passee = df[COLUMN_STOCKOUT].notna() & (df[COLUMN_STOCKOUT] < today)
+        
+        # MAIS seulement si le toner est vraiment vide/très bas (< 3%)
+        # Sinon c'est que la prédiction était fausse et le modèle doit se mettre à jour
+        mask_vraiment_vide = df[COLUMN_LAST_PCT].notna() & (df[COLUMN_LAST_PCT] < 3)
+        
+        # Combinaison : rupture passée ET vraiment vide
+        mask_negatif = mask_rupture_passee & mask_vraiment_vide
+        
+        if mask_negatif.any():
+            # Calculer le nombre de jours DEPUIS la rupture (en négatif)
+            jours_depuis_rupture = (today - df.loc[mask_negatif, COLUMN_STOCKOUT]).dt.days
+            df.loc[mask_negatif, "jours_reel"] = -jours_depuis_rupture
+            
+            print(f"[JOURS NÉGATIFS] {mask_negatif.sum()} toners en retard (rupture passée + vraiment vide)")
+        
+        # Pour les cas où la date est passée mais il reste encore de l'encre (> 3%)
+        # On garde les jours positifs du modèle (qui seront recalculés au prochain retrain)
+        mask_fausse_alerte = mask_rupture_passee & ~mask_vraiment_vide
+        if mask_fausse_alerte.any():
+            print(f"[JOURS NÉGATIFS] {mask_fausse_alerte.sum()} prédictions à recalculer (date passée mais encre restante)")
+    else:
+        # Si pas de colonne stockout, jours_reel = jours_avant_rupture
+        df["jours_reel"] = df.get(COLUMN_DAYS, pd.NA)
+
+    # ============================================================
+    # DÉTECTION ENVOIS RÉCENTS
+    # ============================================================
+    df = check_recent_shipments(df)
+
     return df
 
 
@@ -775,9 +1047,34 @@ def index():
     serial_query = request.args.get("serial_query", "").strip()
     selected_priority = request.args.get("priority", "").strip()
     selected_type_liv = request.args.get("type_livraison", "").strip()
+    filtre_negatif  = request.args.get("filtre_negatif", "").strip()
+    filtre_inchange = request.args.get("filtre_inchange", "").strip()
 
     pending_param = request.args.get("pending")
     show_only_pending = (pending_param == "1")
+
+    # ============================================================
+    # P0 : jours en négatif ET toner vraiment vide
+    # ============================================================
+    if "jours_reel" in df.columns:
+        mask_p0 = df["jours_reel"].notna() & (df["jours_reel"] < 0)
+        df["priorite_affichee"] = df[COLUMN_PRIORITY].copy()
+        df.loc[mask_p0, "priorite_affichee"] = 0
+    else:
+        df["priorite_affichee"] = df[COLUMN_PRIORITY].copy()
+
+    # ============================================================
+    # FLAG toner inchangé (commentaire contient l'alerte)
+    # ============================================================
+    if COLUMN_COMMENT in df.columns:
+        df["est_inchange"] = df[COLUMN_COMMENT].astype(str).str.contains(
+            "Cartouche non changée|inchangé|Envoyé il y a", case=False, na=False
+        )
+    else:
+        df["est_inchange"] = False
+
+    # Compteur pour le bouton dans la top-bar (avant filtrage)
+    nb_inchanges = int(df["est_inchange"].sum())
 
     priorities = sorted(df[COLUMN_PRIORITY].dropna().unique().tolist()) if COLUMN_PRIORITY in df.columns else []
 
@@ -796,7 +1093,6 @@ def index():
     # Ces lignes ne s'affichent PAS dans l'accueil
     # ============================================================
     if "alerte_non_prioritaire" in filtered.columns:
-        # Convertir en bool proprement
         filtered["alerte_non_prioritaire"] = filtered["alerte_non_prioritaire"].fillna(False).infer_objects(copy=False).astype(bool)
         nb_alertes_total = filtered["alerte_non_prioritaire"].sum()
         filtered = filtered[~filtered["alerte_non_prioritaire"]].copy()
@@ -825,17 +1121,25 @@ def index():
     elif rupture_mode == "ok":
         filtered = filtered[filtered["rupture_kpax"] == False]
 
-    sort_cols = []
-    if COLUMN_PRIORITY in filtered.columns:
-        sort_cols.append(COLUMN_PRIORITY)
-    if COLUMN_DAYS in filtered.columns:
-        sort_cols.append(COLUMN_DAYS)
-    sort_cols.append(COLUMN_CLIENT)
-    sort_cols.append(COLUMN_SERIAL_DISPLAY)
+    # Filtre jours négatifs (P0)
+    if filtre_negatif == "1":
+        filtered = filtered[filtered["priorite_affichee"] == 0]
 
-    if "rupture_kpax" in filtered.columns:
-        filtered = filtered.sort_values(by=["rupture_kpax"] + sort_cols, ascending=[True] + [True] * len(sort_cols))
+    # Filtre toner inchangé
+    if filtre_inchange == "1":
+        filtered = filtered[filtered["est_inchange"] == True]
+
+    # Tri : P0 en premier, puis priorité, puis jours
+    if "priorite_affichee" in filtered.columns:
+        filtered = filtered.sort_values(
+            by=["priorite_affichee", COLUMN_DAYS, COLUMN_CLIENT, COLUMN_SERIAL_DISPLAY],
+            ascending=[True, True, True, True]
+        )
     else:
+        sort_cols = []
+        if COLUMN_PRIORITY in filtered.columns: sort_cols.append(COLUMN_PRIORITY)
+        if COLUMN_DAYS in filtered.columns:     sort_cols.append(COLUMN_DAYS)
+        sort_cols += [COLUMN_CLIENT, COLUMN_SERIAL_DISPLAY]
         filtered = filtered.sort_values(sort_cols)
 
     grouped_printers = []
@@ -844,14 +1148,14 @@ def index():
             rows = sub.to_dict(orient="records")
 
             min_days_left = float(sub[COLUMN_DAYS].min()) if COLUMN_DAYS in sub.columns and sub[COLUMN_DAYS].notna().any() else None
-            
-            # Pour min_stockout_date, on filtre d'abord les NA avant de faire le min
+
             if COLUMN_STOCKOUT in sub.columns and sub[COLUMN_STOCKOUT].notna().any():
                 min_stockout_date = str(sub[COLUMN_STOCKOUT].dropna().min())
             else:
                 min_stockout_date = None
-            
-            min_priority = int(sub[COLUMN_PRIORITY].min()) if COLUMN_PRIORITY in sub.columns and sub[COLUMN_PRIORITY].notna().any() else None
+
+            # min_priority = priorite_affichee (P0 si négatif)
+            min_priority = int(sub["priorite_affichee"].min()) if "priorite_affichee" in sub.columns and sub["priorite_affichee"].notna().any() else None
 
             client_name = (
                 sub[COLUMN_CLIENT].dropna().astype(str).iloc[0]
@@ -872,19 +1176,11 @@ def index():
             colors_present = []
             if "couleur_norm" in sub.columns:
                 colors_present = (
-                    sub["couleur_norm"]
-                    .dropna()
-                    .astype(str)
-                    .str.lower()
-                    .str.strip()
-                    .replace("", pd.NA)
-                    .dropna()
-                    .unique()
-                    .tolist()
+                    sub["couleur_norm"].dropna().astype(str).str.lower().str.strip()
+                    .replace("", pd.NA).dropna().unique().tolist()
                 )
                 colors_present = sorted(colors_present)
 
-            # Alerte contrat fin proche
             alerte_fin_proche = False
             date_fin_contrat = None
             if "alerte_contrat_fin_proche" in sub.columns:
@@ -932,6 +1228,9 @@ def index():
         selected_type_liv=selected_type_liv,
         show_only_pending=show_only_pending,
         rupture_mode=rupture_mode,
+        filtre_negatif=filtre_negatif,
+        filtre_inchange=filtre_inchange,
+        nb_inchanges=nb_inchanges,
         col_id=COLUMN_ID,
         col_toner=COLUMN_TONER,
         col_days=COLUMN_DAYS,

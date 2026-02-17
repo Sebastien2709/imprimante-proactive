@@ -1,4 +1,0 @@
-column,dtype,n_missing,missing_%,n_unique
-serial,object,0,0.0,863
-company,object,0,0.0,1
-relation_type,object,0,0.0,2

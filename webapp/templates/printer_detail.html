@@ -118,10 +118,21 @@
                   <td>{{ r.get(col_id, "") }}</td>
                   <td>{{ r.get(col_toner, "") }}</td>
                   <td>{{ r.get("couleur", "") }}</td>
-                  <td>{{ r.get(col_days, "") }}</td>
-                  <td>{{ r.get(col_stockout, "") }}</td>
+                  <td>
+                    {% set jours_reel = r.get('jours_reel') %}
+                    {% if jours_reel is not none and jours_reel == jours_reel %}
+                      {% if jours_reel < 0 %}
+                        <span style="color:#dc2626; font-weight:700;">{{ jours_reel|int }} j ⚠️</span>
+                      {% else %}
+                        {{ jours_reel|int }}
+                      {% endif %}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>{{ r.get(col_stockout, "") | format_date }}</td>
                   <td>{{ r.get(col_priority, "") }}</td>
-                  <td>{{ r.get(col_last_update, "") }}</td>
+                  <td>{{ r.get(col_last_update, "") | format_date }}</td>
                   <td>
                     {% if r.get(col_last_pct) is not none %}
                       {{ r.get(col_last_pct) | round(0) }}%

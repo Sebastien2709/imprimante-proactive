@@ -1,6 +1,7 @@
-﻿.venv/
-data/raw/
-data/interim/
+﻿# Data generated
+data/processed/
+data/outputs/
 
-.env
-.env.*
+# Python cache
+__pycache__/
+*.pyc

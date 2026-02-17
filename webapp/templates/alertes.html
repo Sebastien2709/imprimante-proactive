@@ -343,11 +343,18 @@
                   {% else %}—{% endif %}
                 </td>
                 <td>
-                  {% if row.get(col_days) is not none and row.get(col_days) == row.get(col_days) %}
-                    {{ row.get(col_days) | int }}
-                  {% else %}—{% endif %}
+                  {% set jours_reel = row.get('jours_reel') %}
+                  {% if jours_reel is not none and jours_reel == jours_reel %}
+                    {% if jours_reel < 0 %}
+                      <span style="color:var(--red); font-weight:700;">{{ jours_reel|int }} j ⚠️</span>
+                    {% else %}
+                      {{ jours_reel|int }}
+                    {% endif %}
+                  {% else %}
+                    —
+                  {% endif %}
                 </td>
-                <td>{{ row.get(col_stockout, "—") }}</td>
+                <td>{{ row.get(col_stockout, "—") | format_date }}</td>
                 <td>
                   {% if row.get(col_priority) is not none %}
                     <span class="badge-prio badge-prio-{{ row.get(col_priority) | int }}">P{{ row.get(col_priority) | int }}</span>

@@ -1,3 +1,0 @@
-model,n_forecasts,n_matched,coverage_%,mae_days,median_err,jit_rate_%,early_%,late_%
-V1,21764,21764,665.2,441.44,-369.0,0.1,99.2,0.6
-V2.1,21764,21764,665.2,476.63,-442.0,0.1,52.3,0.4

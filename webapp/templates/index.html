@@ -336,10 +336,55 @@
       letter-spacing: 0.03em;
       color: #fff;
     }
+    .badge-prio-0 { background: #7c3aed }
     .badge-prio-1 { background: var(--prio1); }
     .badge-prio-2 { background: var(--prio2); }
     .badge-prio-3 { background: var(--prio3); color:#1a1a1a; }
     .badge-prio-4 { background: var(--prio4); }
+
+    @keyframes pulse-p0 {
+      0%,100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.6); }
+      50%      { box-shadow: 0 0 0 6px rgba(124,58,237,0); }
+    }
+
+    /* Badge toner inchangé */
+    .badge-unchanged {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: rgba(124,58,237,0.15);
+      border: 1px solid rgba(124,58,237,0.4);
+      border-radius: 6px;
+      padding: 0.12rem 0.5rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #a78bfa;
+      white-space: nowrap;
+    }
+
+    /* Bouton filtre rapide "toner inchangé" dans la top-bar */
+    .btn-unchanged {
+      background: rgba(124,58,237,0.2);
+      color: #a78bfa;
+      border: 1px solid rgba(124,58,237,0.4);
+      border-radius: 8px;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: background 0.15s;
+    }
+    .btn-unchanged:hover { background: rgba(124,58,237,0.35); color: #c4b5fd; text-decoration:none; }
+    .btn-unchanged .badge-count {
+      background: rgba(255,255,255,0.2);
+      border-radius: 999px;
+      padding: 0.05rem 0.45rem;
+      font-size: 0.75rem;
+    }
 
     /* Type-livraison badge */
     .badge-type {
@@ -644,6 +689,13 @@
       ⚠️ Alertes
       <span class="badge-count">{{ nb_alertes_non_prioritaires }}</span>
     </a>
+    <!-- Toner inchangé button -->
+    {% if nb_inchanges > 0 %}
+    <a href="/?filtre_inchange=1" class="btn-unchanged">
+      🔔 Toner inchangé
+      <span class="badge-count">{{ nb_inchanges }}</span>
+    </a>
+    {% endif %}
     <div class="stat-chip"><span class="label">Total</span><span class="val">{{ total_rows }}</span></div>
     <div class="stat-chip"><span class="label">À traiter</span><span class="val">{{ pending_rows }}</span></div>
     <div class="stat-chip"><span class="label">Envoyés</span><span class="val">{{ sent_rows }}</span></div>
@@ -699,6 +751,28 @@
 
           <input type="radio" name="rupture_mode" id="rupt_rupture" value="rupture" {% if rupture_mode == "rupture" %}checked{% endif %}>
           <label for="rupt_rupture">⚠️ Pas de données</label>
+        </div>
+      </div>
+
+      <!-- Filtre jours négatifs (P0) -->
+      <div class="col-md-2 col-6">
+        <label class="form-label">En retard</label>
+        <div class="kpax-group">
+          <input type="radio" name="filtre_negatif" id="neg_all" value="" {% if not filtre_negatif %}checked{% endif %}>
+          <label for="neg_all">Tous</label>
+          <input type="radio" name="filtre_negatif" id="neg_only" value="1" {% if filtre_negatif %}checked{% endif %}>
+          <label for="neg_only" style="color:#a78bfa">🔴 P0 uniquement</label>
+        </div>
+      </div>
+
+      <!-- Filtre toner inchangé -->
+      <div class="col-md-2 col-6">
+        <label class="form-label">Toner inchangé</label>
+        <div class="kpax-group">
+          <input type="radio" name="filtre_inchange" id="inc_all" value="" {% if not filtre_inchange %}checked{% endif %}>
+          <label for="inc_all">Tous</label>
+          <input type="radio" name="filtre_inchange" id="inc_only" value="1" {% if filtre_inchange %}checked{% endif %}>
+          <label for="inc_only" style="color:#a78bfa">🔔 Inchangés</label>
         </div>
       </div>
     </div>
@@ -805,10 +879,20 @@
               <tr class="{% if rid in processed_ids %}row-sent{% endif %}">
                 <td style="color:var(--text-muted)">{{ rid }}</td>
                 <td><strong>{{ r.get(col_toner, '') }}</strong></td>
-                <td>{{ r.get(col_days, '—') }}</td>
-                <td>{{ r.get(col_stockout, '—') }}</td>
+                <td>
+                  {% set jours = r.get('jours_reel') %}
+                  {% if jours is not none and jours != '' and jours == jours %}
+                    {% if jours|float < 0 %}
+                      <span style="color:var(--red); font-weight:700;">{{ jours|int }} j ⚠️</span>
+                    {% else %}
+                      {{ jours|int }}
+                    {% endif %}
+                  {% else %}—{% endif %}
+                </td>
+                <td>{{ r.get(col_stockout, '—') | format_date }}</td>
 
                 <td>
+                  {% set prio = r.get('priorite_affichee', r.get(col_priority)) %}
                   {% if prio is not none %}
                     <span class="badge-prio badge-prio-{{ prio|int }}">P{{ prio|int }}</span>
                   {% endif %}
@@ -845,7 +929,15 @@
                   {% endif %}
                 </td>
 
-                <td style="color:var(--text-muted); max-width:140px;">{{ r.get(col_comment, '') }}</td>
+                <td style="color:var(--text-muted); max-width:180px;">
+                  {% set comment = r.get(col_comment, '') %}
+                  {% if comment and '🔔' in comment or (comment and 'inchangé' in comment|lower) or (comment and 'Cartouche non changée' in comment) %}
+                    <span class="badge-unchanged">🔔 Toner inchangé</span><br>
+                    <span style="font-size:0.75rem;">{{ comment }}</span>
+                  {% else %}
+                    {{ comment }}
+                  {% endif %}
+                </td>
 
                 <!-- Consumption modal trigger -->
                 <td>

@@ -1,5 +1,0 @@
-column,dtype,n_missing,missing_%,n_unique,min,q25,median,mean,q75,max
-color,object,0,0.0,4.0,,,,,,
-sum,int64,0,0.0,,0.0,185.25,257.5,237.75,310.0,436.0
-count,int64,0,0.0,,942.0,956.25,976.5,1027.75,1048.0,1216.0
-rate_%,float64,0,0.0,,0.0,19.275,26.35,22.15,29.225,35.9
