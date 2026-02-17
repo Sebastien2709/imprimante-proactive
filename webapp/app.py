@@ -647,6 +647,9 @@ def _load_data_from_disk():
         print("[DATA] Fichier introuvable — pipeline pas encore exécuté")
         return pd.DataFrame()
     df = pd.read_csv(DATA_PATH, sep=";")
+    if df.empty or COLUMN_SERIAL not in df.columns:
+        print("[DATA] CSV vide ou colonnes manquantes")
+        return pd.DataFrame()
 
     if COLUMN_ID not in df.columns:
         df[COLUMN_ID] = range(1, len(df) + 1)
@@ -1059,12 +1062,15 @@ def index():
     # ============================================================
     # P0 : jours en négatif ET toner vraiment vide
     # ============================================================
-    if "jours_reel" in df.columns:
-        mask_p0 = df["jours_reel"].notna() & (df["jours_reel"] < 0)
-        df["priorite_affichee"] = df[COLUMN_PRIORITY].copy()
-        df.loc[mask_p0, "priorite_affichee"] = 0
+    if COLUMN_PRIORITY in df.columns:
+        if "jours_reel" in df.columns:
+            mask_p0 = df["jours_reel"].notna() & (df["jours_reel"] < 0)
+            df["priorite_affichee"] = df[COLUMN_PRIORITY].copy()
+            df.loc[mask_p0, "priorite_affichee"] = 0
+        else:
+            df["priorite_affichee"] = df[COLUMN_PRIORITY].copy()
     else:
-        df["priorite_affichee"] = df[COLUMN_PRIORITY].copy()
+        df["priorite_affichee"] = pd.NA
 
     # ============================================================
     # FLAG toner inchangé (commentaire contient l'alerte)
