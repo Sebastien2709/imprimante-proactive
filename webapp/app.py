@@ -445,9 +445,9 @@ def check_recent_shipments(df):
                     
                     # Message adapté selon le % actuel
                     if last_pct < 3:
-                        alert = f"🚨 Cartouche non changée (envoyée il y a {days_ago}j)"
+                        alert = f"🚨 Cartouche non changée (envoyée il y a {days_ago}j, {int(last_pct)}% restant)"
                     else:
-                        alert = f"⚠️ Cartouche non changée (envoyée il y a {days_ago}j)"
+                        alert = f"⚠️ Cartouche non changée (envoyée il y a {days_ago}j, {int(last_pct)}% restant)"
                     
                     if pd.isna(current_comment) or current_comment == "":
                         new_comment = alert
@@ -643,6 +643,9 @@ def compute_slope_pct_per_day(dates: pd.Series, pcts: pd.Series):
 
 def _load_data_from_disk():
     print("[DATA] Lecture :", DATA_PATH)
+    if not DATA_PATH.exists():
+        print("[DATA] Fichier introuvable — pipeline pas encore exécuté")
+        return pd.DataFrame()
     df = pd.read_csv(DATA_PATH, sep=";")
 
     if COLUMN_ID not in df.columns:
